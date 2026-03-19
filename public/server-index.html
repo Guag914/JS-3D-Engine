@@ -1,0 +1,143 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cursor Follower with Coordinates</title>
+    <style>
+        body {
+            height: 100vh;
+            margin: 0;
+            padding: 0;
+            /* Hide the default cursor to make the custom one the primary focus */
+            cursor: none; 
+        }
+
+        #follower {
+            position: fixed; /* Ensures it stays relative to the viewport, not the document flow */
+            width: 80px;
+            height: 50px;
+            background-color: #333;
+            color: white;
+            padding: 5px;
+            border-radius: 5px;
+            pointer-events: none; /* Allows clicks to pass through the follower to elements beneath it */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            /* Center the element on the cursor tip */
+            transform: translate(-50%, -50%); 
+            transition: transform 0.05s linear; /* Optional: adds a slight easing effect */
+            z-index: 1000; /* Ensures it is on top of other content */
+        }
+    </style>
+</head>
+<body>
+
+    <input type="text" id="nameInput" placeholder="Enter name here">
+
+    <div id="follower">Mouse Position: (X: 0, Y: 0, Name: User)</div>
+    <canvas id="map" width="500px" height="500px"></canvas>
+    
+    <script>
+        const follower = document.getElementById('follower');
+        const socket = new WebSocket('ws://localhost:3000');
+        
+        const circles = new Map();
+        
+        const canvas = document.getElementById('map');
+        
+        canvas.width = window.innerWidth;
+	    canvas.height = window.innerHeight;
+        
+		const ctx = canvas.getContext('2d');
+		
+		function distance(x1, y1, x2, y2) {
+    		return Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2);
+		}
+        
+        class Circle{
+        	constructor(id, x, y, name, color){
+        		this.x = x;
+        		this.y = y;
+        		this.id = id;
+        		this.name = name;
+        		this.color = color;
+        	}
+        	
+        	getX(){  return this.x;  }
+        	getY(){  return this.y;  }
+        	
+        	draw() {   ctx.arc(this.x, this.y, 7, 0, Math.PI * 2);  }
+        
+        } //end class circle
+
+        document.addEventListener('mousemove', (event) => {
+            // Get current mouse coordinates
+            const myX = event.clientX;
+            const myY = event.clientY;
+            
+            const nameInput = document.getElementById("nameInput");
+            const name = nameInput.value;
+ 
+            
+            if (socket.readyState === WebSocket.OPEN) {  // only send if connected
+        		const data = {x: myX, y: myY, name: name};
+    		    socket.send(JSON.stringify(data));
+ 		   };
+
+            // Update the element's position using CSS transform for better performance
+            follower.style.transform = `translate(${myX}px, ${myY}px)`;
+
+            // Update the element's text content with the coordinates
+            follower.textContent = `X: ${myX}, Y: ${myY}, Name: ${name}`;
+        });
+        
+        socket.onmessage = (event) => {
+        
+//         	console.log('received:', event.data); //===debug===
+        	
+		    const allCoords = JSON.parse(event.data);
+		    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    		for (const id in allCoords) {
+//     			console.log('processing id:', id, allCoords[id]); //===debug===
+    			
+    			const currX = allCoords[id].x;
+  		      	const currY = allCoords[id].y;
+  		      	const currName = allCoords[id].name;
+  		      	const currColor = allCoords[id].color;
+  		      	
+  		      	//hover check
+  		      	// if (distance(currX, currY, allCoords[id].x, allCoords[id].y) < 7){
+// 		    			console.log(`Touching circle ${id}`);
+// 		    		}
+    			
+ 		       if (!circles.has(id)) {
+ 		           circles.set(id, new Circle(id, currX, currY, currName, currColor));
+  		      } else {
+  		          circles.get(id).x = currX;
+ 		          circles.get(id).y = currY;
+ 		          circles.get(id).name = currName;
+ 		          circles.get(id).color = currColor;
+ 		          drawCircle(currX, currY, currColor);
+  		      }
+  		      
+ 		   	 } //end for loop
+		};
+		
+		//===debug===
+		socket.onopen = () => {
+    		console.log('connected');
+		};
+		
+		function drawCircle(x, y, color){  
+		    ctx.beginPath();
+		    ctx.arc(x, y, 7, 0, Math.PI * 2);
+		    ctx.fillStyle = color;
+		    ctx.fill();
+	}
+    </script>
+</body>
+</html>
