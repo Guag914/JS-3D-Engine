@@ -54,12 +54,12 @@ class Camera {
         right = vectorByNumber(1/rightLength, right); //normalize vectors
         up = vectorByNumber(1/upLength, up);
 
-        console.log(vectorDotProduct(forward, right).toFixed(6)); // should be ~0 if orthogonal
-        console.log(`
-            RightX: ${right.x}, RightY: ${right.y}, RightZ: ${right.z},
-            \n ForwardX: ${forward.x}, ForwardY: ${forward.y}, ForwardZ: ${forward.z}
-            \n Roll: ${this.roll}, Pitch: ${this.pitch}, Yaw: ${this.yaw}
-        `);
+        //debug
+//        console.log(vectorDotProduct(forward, right).toFixed(6)); // should be ~0 if orthogonal
+//        console.log(`
+//            X: ${this.x}, Y: ${this.y}, Z: ${this.z},
+//            \n Roll: ${this.roll}, Pitch: ${this.pitch}, Yaw: ${this.yaw}
+//        `);
 
 
         if (pressedKeys['KeyW']){
@@ -375,6 +375,12 @@ const main = () => {
         let result = multiplyMatVec(final, p);
         const screen = toScreen(result.x, result.y, result.z, result.w)
 //        drawPoints(screen.x, screen.y);
+
+        if (result.w >= 0){ //access w because z is divided by w for perspective
+            projectedMatrix.push(null);
+            continue;
+        }
+
         projectedMatrix.push(screen);
     }
 
@@ -383,7 +389,13 @@ const main = () => {
         const p2 = projectedMatrix[p[1]];
         const p3 = projectedMatrix[p[2]];
 
-        if (p1.z < 1 || p2.z < 1 || p3.z < 1) continue;
+        if (!p1 || !p2 || !p3) continue;
+
+//        console.log(`
+//           p1X: ${p1.x}, p1Y: ${p1.y}, p1Z: ${p1.z}, p1W: ${p1.w},
+//           \n p2X: ${p2.x}, p2Y: ${p2.y}, p2Z: ${p2.z}, p2W: ${p2.w}
+//           \n p3X: ${p3.x}, p3Y: ${p3.y}, p3Z: ${p3.z}, p3W: ${p3.w}
+//        `);
         drawLine(p1.x, p1.y, p2.x, p2.y);
         drawLine(p2.x, p2.y, p3.x, p3.y);
         drawLine(p3.x, p3.y, p1.x, p1.y);
