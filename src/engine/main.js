@@ -15,44 +15,58 @@ document.addEventListener('keyup', (event) => { pressedKeys[event.code] = false;
 
 //class declarations:
 class Camera {
-    constructor (x, y, z){
+    constructor (x, y, z, r){
         this.x = x;
         this.y = y;
         this.z = z;
-        this.rate = 10;
 
-        //identity quaternion
-        this.q = new Quaternion(1, 0, 0, 0);
+        this.r = r; //rate
+        this.acell = 0; //acceleration
 
-        //yaw for tracking
+        this.q = new Quaternion(1, 0, 0, 0); //identity quaternion
+
+        //rotation tracking for movement math
         this.yaw = 0;
         this.pitch = 0;
         this.roll = 0;
+
+        //vectors moved into class scope for external movement calls
+        let forward = {x: 0, y: 0, z: 0};
+        let right = {x: 0, y: 0, z: 0};
+        let up = {x: 0, y: 0, z: 0};
     }
 
     controls(){
         const rotM = this.q.convertToM();
 
-        const forward = { x: rotM[0][2], y: rotM[1][2], z: rotM[2][2] }; //store as a vector instead of just a scalar
-        let right =   { x: rotM[0][0], y: rotM[1][0], z: rotM[2][0] };
-        let up =      { x: rotM[0][1], y: rotM[1][1], z: rotM[2][1] };
+        this.forward = { x: rotM[0][2], y: 0, z: rotM[2][2] }; //store as a vector instead of just a scalar
+        this.right =   { x: rotM[0][0], y: 0, z: rotM[2][0] };
+        this.up =      { x: rotM[0][1], y: rotM[1][1], z: rotM[2][1] };
 
-        //gram schmidt process to make the vectors orthogonal
+        const fLength = Math.sqrt(this.forward.x**2 + this.forward.y**2 + this.forward.z**2);
+        const rLength = Math.sqrt(this.right.x**2 + this.right.y**2 + this.right.z**2);
+        const uLength = Math.sqrt(this.up.x**2 + this.up.y**2 + this.up.z**2);
+
+        this.forward = vectorByNumber(1/fLength, this.forward);
+        this.right = vectorByNumber(1/rLength, this.right);
+        this.up = vectorByNumber(1/uLength, this.up);
+
+        //gram schmidt process to make the vectors orthogonal (make axis perpendicular again)
         //subtract projection of each matrix so only get the perpendicular component
         //normalize after to get unit vector
         //right = right - (right·forward / forward·forward) * forward
         //up = up - (up·forward / forward·forward) * forward - (up·right / right·right) * right
 
-        right = vectorSubtraction(right, vectorByNumber(vectorDotProduct(right, forward)/vectorDotProduct(forward, forward), forward))
+        this.right = vectorSubtraction(this.right, vectorByNumber(vectorDotProduct(this.right, this.forward)/vectorDotProduct(this.forward, this.forward), this.forward))
 
-        up = vectorSubtraction(up, vectorByNumber(vectorDotProduct(up, forward)/vectorDotProduct(forward, forward), forward));
-        up = vectorSubtraction(up, vectorByNumber(vectorDotProduct(up, right)/vectorDotProduct(right, right), right));
+        this.up = vectorSubtraction(this.up, vectorByNumber(vectorDotProduct(this.up, this.forward)/vectorDotProduct(this.forward, this.forward), this.forward));
+        this.up = vectorSubtraction(this.up, vectorByNumber(vectorDotProduct(this.up, this.right)/vectorDotProduct(this.right, this.right), this.right));
 
-        let  rightLength = Math.sqrt(right.x**2 + right.y**2 + right.z**2);
-        let  upLength = Math.sqrt(up.x**2 + up.y**2 + up.z**2);
+        let  rightLength = Math.sqrt(this.right.x**2 + this.right.y**2 + this.right.z**2);
+        let  upLength = Math.sqrt(this.up.x**2 + this.up.y**2 + this.up.z**2);
 
-        right = vectorByNumber(1/rightLength, right); //normalize vectors
-        up = vectorByNumber(1/upLength, up);
+        this.right = vectorByNumber(1/rightLength, this.right); //normalize vectors
+        this.up = vectorByNumber(1/upLength, this.up);
 
         //debug
 //        console.log(vectorDotProduct(forward, right).toFixed(6)); // should be ~0 if orthogonal
@@ -61,51 +75,39 @@ class Camera {
 //            \n Roll: ${this.roll}, Pitch: ${this.pitch}, Yaw: ${this.yaw}
 //        `);
 
+//        console.log(`ForwardX: ${forward.x}\nForwardZ: ${forward.z}`);
+        //Movement
+        if (pressedKeys['KeyW']){ this.mForward(); }
+        if (pressedKeys['KeyS']){ this.mBackward(); }
+        if (pressedKeys['KeyA']){ this.mLeft(); }
+        if (pressedKeys['KeyD']){ this.mRight(); }
 
-        if (pressedKeys['KeyW']){
-            this.x -= forward.x * this.rate;
-//            this.y -= forward.y * this.rate;
-            this.z += forward.z * this.rate;
-        }
-        if (pressedKeys['KeyS']){
-            this.x += forward.x * this.rate;
-//            this.y += forward.y * this.rate;
-            this.z -= forward.z * this.rate;
-        }
-        if (pressedKeys['KeyA']){
-            this.x -= right.x * this.rate;
-//            this.y += right.y * this.rate;
-            this.z += right.z * this.rate;
-        }
-        if (pressedKeys['KeyD']){
-            this.x += right.x * this.rate;
-//            this.y -= right.y * this.rate;
-            this.z -= right.z * this.rate;
-        }
+        if (pressedKeys['Space']){ this.mUp() }
+        if (pressedKeys['ShiftLeft']){ this.mDown() }
 
-        if (pressedKeys['Space']){ this.y += this.rate; }
-        if (pressedKeys['ShiftLeft']){ this.y -= this.rate; }
+        //Rotations
+        if (pressedKeys['ArrowLeft']){ this.rLeft(); }
+        if (pressedKeys['ArrowRight']){ this.rRight(); }
+        if (pressedKeys['ArrowUp']){ this.rUp(); }
+        if (pressedKeys['ArrowDown']){ this.rDown(); }
 
-        //yaw
-        if (pressedKeys['ArrowLeft']){ this.q.update(0.015, 0, 1, 0); this.yaw += 0.015;}
-        if (pressedKeys['ArrowRight']){ this.q.update(-0.015, 0, 1, 0); this.yaw -= 0.015;}
-
-        //pitch
-        if (pressedKeys['ArrowUp']){ this.q.update(0.015, Math.cos(this.yaw), 0, Math.sin(this.yaw)); this.pitch += 0.015;}
-        if (pressedKeys['ArrowDown']){ this.q.update(-0.015, Math.cos(this.yaw), 0, Math.sin(this.yaw)); this.pitch -= 0.015;}
-//        if (pressedKeys['ArrowUp']){ this.q.update(0.015, 1, 0, 0);  } //causes gimbal lock
-//        if (pressedKeys['ArrowDown']){ this.q.update(-0.015, 1, 0, 0);  }
-//        if (pressedKeys['ArrowUp']){ this.q.update(0.015, right.x, right.y, right.z);  } //causes camera wobble
-//        if (pressedKeys['ArrowDown']){ this.q.update(-0.015, right.x, right.y, right.z);  }
-
-        //roll
-        if (pressedKeys['KeyE']){ this.q.update(0.015, -Math.sin(this.yaw), 0, Math.cos(this.yaw)); this.roll += 0.015; }
-        if (pressedKeys['KeyQ']){ this.q.update(-0.015, -Math.sin(this.yaw), 0, Math.cos(this.yaw)); this.roll -= 0.015; }
-//        if (pressedKeys['KeyE']){ this.q.update(0.015, 0, 0, 1); } //causes gimbal lock
-//        if (pressedKeys['KeyQ']){ this.q.update(-0.015, 0, 0, 1); }
-//        if (pressedKeys['KeyE']){ this.q.update(0.015, forward.x, forward.y, forward.z); } //causes camera wobble
-//        if (pressedKeys['KeyQ']){ this.q.update(-0.015, forward.x, forward.y, forward.z); }
+        if (pressedKeys['KeyE']){ this.rCW(); }
+        if (pressedKeys['KeyQ']){ this.rCCW(); }
     }
+
+    mForward(){ this.x -= this.forward.x * this.r * 10; this.y -= this.forward.y * this.r * 10; this.z += this.forward.z * this.r * 10; }
+    mBackward(){ this.x += this.forward.x * this.r * 10; this.y += this.forward.y * this.r * 10; this.z -= this.forward.z * this.r * 10; }
+    mLeft(){ this.x -= this.right.x * this.r * 10; this.z += this.right.z * this.r * 10; }
+    mRight(){ this.x += this.right.x * this.r * 10; this.z -= this.right.z * this.r * 10; }
+    mUp(){ this.y += this.up.y * this.r * 10; }
+    mDown(){ this.y -= this.up.y * this.r * 10; }
+
+    rUp(){ if (this.pitch < 1.5){this.q.update(0.015 * this.r, Math.cos(this.yaw), 0, Math.sin(this.yaw)); this.pitch += 0.015 * this.r;} }
+    rDown(){ if (this.pitch > -1.5){this.q.update(-0.015 * this.r, Math.cos(this.yaw), 0, Math.sin(this.yaw)); this.pitch -= 0.015 * this.r;} }
+    rLeft(){ this.q.update(0.015 * this.r, 0, 1, 0); this.yaw += 0.015 * this.r; }
+    rRight(){ this.q.update(-0.015 * this.r, 0, 1, 0); this.yaw -= 0.015 * this.r; }
+    rCW(){ this.q.update(0.015 * this.r, -Math.sin(this.yaw), 0, Math.cos(this.yaw)); this.roll += 0.015 * this.r; }
+    rCCW(){ this.q.update(-0.015 * this.r, -Math.sin(this.yaw), 0, Math.cos(this.yaw)); this.roll -= 0.015 * this.r; }
 }
 
 class Quaternion{
@@ -125,7 +127,7 @@ class Quaternion{
         return new this.constructor(tempW, tempX, tempY, tempZ);
     }
 
-    update(angle, tx, ty, tz){ //use 0 to denote a certain axis
+    update(angle, tx, ty, tz){
         const tempQ = new Quaternion(Math.cos(angle/2), Math.sin(angle/2)*tx, Math.sin(angle/2)*ty, Math.sin(angle/2)*tz); //similar to unit circle cos(t) and sin(t) ratios
 
         const result = this.hamiltonProduct(tempQ);
@@ -319,9 +321,6 @@ const multiplyMatMat = (a, b) => {
     return m;
 }
 
-
-const cam = new Camera(0, 0, -1000);
-
 const cubeSize = 200;
 
 const cubes = [
@@ -357,6 +356,7 @@ for (const cube of cubes) {
 }
 
 let angle = 0; //angle of rotation
+const cam = new Camera(0, 0, -1000, 1); //x, y, z, rate
 
 const main = () => {
     let projectedMatrix = [];
@@ -391,11 +391,6 @@ const main = () => {
 
         if (!p1 || !p2 || !p3) continue;
 
-//        console.log(`
-//           p1X: ${p1.x}, p1Y: ${p1.y}, p1Z: ${p1.z}, p1W: ${p1.w},
-//           \n p2X: ${p2.x}, p2Y: ${p2.y}, p2Z: ${p2.z}, p2W: ${p2.w}
-//           \n p3X: ${p3.x}, p3Y: ${p3.y}, p3Z: ${p3.z}, p3W: ${p3.w}
-//        `);
         drawLine(p1.x, p1.y, p2.x, p2.y);
         drawLine(p2.x, p2.y, p3.x, p3.y);
         drawLine(p3.x, p3.y, p1.x, p1.y);
