@@ -81,7 +81,6 @@
             const nameInput = document.getElementById("nameInput");
             const name = nameInput.value;
  
-            
             if (socket.readyState === WebSocket.OPEN) {  // only send if connected
         		const data = {x: myX, y: myY, name: name};
     		    socket.send(JSON.stringify(data));

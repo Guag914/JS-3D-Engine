@@ -176,24 +176,108 @@ class Cube {
         this.depth = depth / 2;
 
         this.M = [
-            [0,1,2],[0,2,3],
-            [4,5,6],[4,6,7],
-            [0,4,5],[0,5,1],
-            [3,7,6],[3,6,2],
-            [0,3,7],[0,7,4],
-            [1,2,6],[1,6,5]
+            // Front face
+            [0,1,2], [0,2,3],
+            // Back face
+            [4,6,5], [4,7,6],
+            // Top face
+            [0,3,7], [0,7,4],
+            // Bottom face
+            [1,5,6], [1,6,2],
+            // Right face
+            [0,4,5], [0,5,1],
+            // Left face
+            [3,2,6], [3,6,7],
         ];
 
         this.V = [
-            new Vertex(x + this.width, y + this.height, z - this.depth, w),
-            new Vertex(x + this.width, y - this.height, z - this.depth, w),
-            new Vertex(x - this.width, y - this.height, z - this.depth, w),
-            new Vertex(x - this.width, y + this.height, z - this.depth, w),
-            new Vertex(x + this.width, y + this.height, z + this.depth, w),
-            new Vertex(x + this.width, y - this.height, z + this.depth, w),
-            new Vertex(x - this.width, y - this.height, z + this.depth, w),
-            new Vertex(x - this.width, y + this.height, z + this.depth, w)
+            // Front face (z - depth)
+            new Vertex(x + this.width, y + this.height, z - this.depth, w), // 0: top-right-front
+            new Vertex(x + this.width, y - this.height, z - this.depth, w), // 1: bot-right-front
+            new Vertex(x - this.width, y - this.height, z - this.depth, w), // 2: bot-left-front
+            new Vertex(x - this.width, y + this.height, z - this.depth, w), // 3: top-left-front
+            // Back face (z + depth)
+            new Vertex(x + this.width, y + this.height, z + this.depth, w), // 4: top-right-back
+            new Vertex(x + this.width, y - this.height, z + this.depth, w), // 5: bot-right-back
+            new Vertex(x - this.width, y - this.height, z + this.depth, w), // 6: bot-left-back
+            new Vertex(x - this.width, y + this.height, z + this.depth, w), // 7: top-left-back
         ];
+    }
+}
+
+//webscript code
+const socket = new WebSocket('ws://localhost:3000');
+//player class
+class Player {
+    constructor(x, y, z, w, color, id){
+        this.x = x;
+        this.y = y;
+        this.z = z;
+        this.w = w;
+
+        this.color = color;
+        this.rotation = cam.q;
+
+        //placeholder cube for rendering
+        this.pos = new Cube(this.x, this.y, this.z, this.w, 100, 100, 100);
+    }
+
+    updatePos(){
+        this.pos.x = this.x;
+        this.pos.y = this.y;
+        this.pos.z = this.z;
+        this.pos.w = this.w;
+
+        this.rotation = cam.q;
+
+        this.pos.V = [
+            // Front face (z - depth)
+            new Vertex(this.x + this.pos.width, this.y + this.pos.height, this.z - this.pos.depth, this.w), // 0: top-right-front
+            new Vertex(this.x + this.pos.width, this.y - this.pos.height, this.z - this.pos.depth, this.w), // 1: bot-right-front
+            new Vertex(this.x - this.pos.width, this.y - this.pos.height, this.z - this.pos.depth, this.w), // 2: bot-left-front
+            new Vertex(this.x - this.pos.width, this.y + this.pos.height, this.z - this.pos.depth, this.w), // 3: top-left-front
+            // Back face (z + depth)
+            new Vertex(this.x + this.pos.width, this.y + this.pos.height, this.z + this.pos.depth, this.w), // 4: top-right-back
+            new Vertex(this.x + this.pos.width, this.y - this.pos.height, this.z + this.pos.depth, this.w), // 5: bot-right-back
+            new Vertex(this.x - this.pos.width, this.y - this.pos.height, this.z + this.pos.depth, this.w), // 6: bot-left-back
+            new Vertex(this.x - this.pos.width, this.y + this.pos.height, this.z + this.pos.depth, this.w), // 7: top-left-back
+        ];
+    }
+//    render(){  } //render red verticies for now
+}
+
+//other player scripts
+const players = new Map();
+
+socket.onmessage = (event) => {
+    let otherPlayers = JSON.parse(event.data);
+
+    for (const id in otherPlayers){
+        const currX = otherPlayers[id].x;
+        const currY = otherPlayers[id].y;
+        const currZ = otherPlayers[id].z;
+        const currW = otherPlayers[id].w;
+
+        const currRotation = otherPlayers[id].rotation;
+        const currColor = otherPlayers[id].color;
+
+        if (!players.has(id)){ players.set(id, new Player(currX, currY, currZ, currW, currColor, id)) }
+        else {
+            const currPlayer = players.get(id);
+            currPlayer.x = currX;
+            currPlayer.y = currY;
+            currPlayer.z = currZ;
+            currPlayer.w = currW;
+            currPlayer.rotation = currRotation;
+            currPlayer.color = currColor;
+        }
+
+    }
+
+    for (const [id] of players) {
+        if (!(id in otherPlayers)) {
+            players.delete(id);
+        }
     }
 }
 
@@ -204,40 +288,14 @@ class Vertex {
         this.z = z;
         this.w = w;
     }
+
     draw(){
         ctx.beginPath();
         ctx.arc((CW2 + 1/2*this.x)/this.w, (CH2 - 1/2*this.y)/this.w, 3, 0, 2 * Math.PI);
-        ctx.fillStyle = '#ffffff';
+        ctx.fillStyle = 'white';
         ctx.fill();
         ctx.closePath();
     }
-}
-
-//Screen functions
-const toScreen = (x, y, z, w) => {
-    return {
-        x: CW2 + (x / w)*CW2,
-        y: CH2 - (y / w)*CH2,
-        z: z / w
-    }
-}
-
-const drawPoints = (x, y) => {
-        ctx.beginPath();
-        ctx.arc(x, y, 3, 0, 2 * Math.PI);
-        ctx.fillStyle = '#ffffff';
-        ctx.fill();
-        ctx.closePath();
-}
-
-const drawLine = (x1, y1, x2, y2) => {
-    ctx.save();
-    ctx.beginPath();
-    ctx.strokeStyle = 'white';
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
-    ctx.stroke();
-    ctx.restore();
 }
 
 //Vector operations
@@ -358,7 +416,40 @@ for (const cube of cubes) {
 let angle = 0; //angle of rotation
 const cam = new Camera(0, 0, -1000, 1); //x, y, z, rate
 
+//Screen functions
+const toScreen = (x, y, z, w) => {
+    return {
+        x: CW2 + (x / w)*CW2,
+        y: CH2 - (y / w)*CH2,
+        z: z / w
+    }
+}
+
+const drawPoints = (x, y, color) => {
+        ctx.beginPath();
+        ctx.arc(x, y, 3, 0, 2 * Math.PI);
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.closePath();
+}
+
+const drawLine = (x1, y1, x2, y2, color) => {
+    ctx.save();
+    ctx.beginPath();
+    ctx.strokeStyle = color;
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+    ctx.restore();
+}
+
 const main = () => {
+    //upate player logic, then render
+    if (socket.readyState === WebSocket.OPEN) {  // only send if connected
+        const data = {x: cam.x, y: cam.y, z: cam.z, w: 1, r:cam.q};
+        socket.send(JSON.stringify(data));
+    };
+
     let projectedMatrix = [];
     ctx.clearRect(0, 0, CW, CH);
     cam.controls();
@@ -374,7 +465,6 @@ const main = () => {
     for (let p of V){
         let result = multiplyMatVec(final, p);
         const screen = toScreen(result.x, result.y, result.z, result.w)
-//        drawPoints(screen.x, screen.y);
 
         if (result.w >= 0){ //access w because z is divided by w for perspective
             projectedMatrix.push(null);
@@ -391,9 +481,34 @@ const main = () => {
 
         if (!p1 || !p2 || !p3) continue;
 
-        drawLine(p1.x, p1.y, p2.x, p2.y);
-        drawLine(p2.x, p2.y, p3.x, p3.y);
-        drawLine(p3.x, p3.y, p1.x, p1.y);
+        drawLine(p1.x, p1.y, p2.x, p2.y, 'white');
+        drawLine(p2.x, p2.y, p3.x, p3.y, 'white');
+        drawLine(p3.x, p3.y, p1.x, p1.y, 'white');
+
+//        ctx.save();
+//        ctx.beginPath();
+//        ctx.strokeStyle = 'white';
+//        ctx.moveTo(p1.x, p1.y);
+//        ctx.lineTo(p2.x, p2.y);
+//        ctx.lineTo(p3.x, p3.y);
+//        ctx.closePath();
+//
+//        ctx.fillStyle = 'black';
+//        ctx.fill();
+//        ctx.stroke();
+//        ctx.restore();
+    }
+
+    for (const [id, player] of players) { //iterate through map of players
+//        console.log(`ID: ${id}, x: ${player.x}, y: ${player.y}, z: ${player.z}, w: ${player.w}`);
+
+        player.updatePos();
+        for (const v of player.pos.V){ //iterate through verticies of each player
+            let result = multiplyMatVec(final, v);
+            if (result.w >= 0) continue;
+            const screen = toScreen(result.x, result.y, result.z, result.w);
+            drawPoints(screen.x, screen.y, 'red')
+        }
     }
 
     requestAnimationFrame(main);
