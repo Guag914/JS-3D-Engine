@@ -479,38 +479,55 @@ const main = () => {
 
     for (let c of cubes){
         for (let vert of c.M){ //look through map
+
+            //original verticies
             const v1 = c.V[vert[0]];
             const v2 = c.V[vert[1]];
             const v3 = c.V[vert[2]];
 
-            let fv1 = multiplyMatVec(camProj, v1);
-            let fv2 = multiplyMatVec(camProj, v2);
-            let fv3 = multiplyMatVec(camProj, v3);
+            //vertex projection
+            let pv1 = multiplyMatVec(camProj, v1);
+            let pv2 = multiplyMatVec(camProj, v2);
+            let pv3 = multiplyMatVec(camProj, v3);
 
-            const sv1 = toScreen(fv1.x, fv1.y, fv1.z, fv1.w);
-            const sv2 = toScreen(fv2.x, fv2.y, fv2.z, fv2.w);
-            const sv3 = toScreen(fv3.x, fv3.y, fv3.z, fv3.w);
+            if (pv1.w >= 0 || pv2.w >= 0 || pv3.w >= 0){ continue; }
 
-            if (fv1.w >= 0 || fv2.w >= 0 || fv3.w >= 0){ continue; }
-            const tri = new Triangle(sv1, sv2, sv3);
-            triangleBuffer.push(tri);
+            //vertex coords convert
+            const cv1 = toScreen(pv1.x, pv1.y, pv1.z, pv1.w);
+            const cv2 = toScreen(pv2.x, pv2.y, pv2.z, pv2.w);
+            const cv3 = toScreen(pv3.x, pv3.y, pv3.z, pv3.w);
 
+            triangleBuffer.push(new Triangle(cv1, cv2, cv3));
         }
     }
+
+    //other player handling
+    for (const [id, player] of players) { //iterate through map of players
+            player.updatePos();
+            for (const vert of player.pos.M){ //iterate through vertex map of each player
+                //player verticies
+                const v1 = player.pos.V[vert[0]];
+                const v2 = player.pos.V[vert[1]];
+                const v3 = player.pos.V[vert[2]];
+
+                //player vertex projection
+                let pv1 = multiplyMatVec(camProj, v1);
+                let pv2 = multiplyMatVec(camProj, v2);
+                let pv3 = multiplyMatVec(camProj, v3);
+
+                if (pv1.w >= 0 || pv2.w >= 0 || pv3.w >= 0){ continue; }
+
+                //player vertex coords convert
+                const cv1 = toScreen(pv1.x, pv1.y, pv1.z, pv1.w);
+                const cv2 = toScreen(pv2.x, pv2.y, pv2.z, pv2.w);
+                const cv3 = toScreen(pv3.x, pv3.y, pv3.z, pv3.w);
+
+                triangleBuffer.push(new Triangle(cv1, cv2, cv3));
+            }
+        }
 
     triangleBuffer.sort((a, b) => a.depth - b.depth);
     for (let tri of triangleBuffer){ tri.draw('white'); }
-
-    for (const [id, player] of players) { //iterate through map of players
-        player.updatePos();
-        for (const v of player.pos.V){ //iterate through verticies of each player
-            let vertProj = multiplyMatVec(camProj, v);
-            const vertCoords = toScreen(vertProj.x, vertProj.y, vertProj.z, vertProj.w);
-
-            if (result.w >= 0) continue;
-            drawPoints(vertCoords.x, vertCoords.y, 'red')
-        }
-    }
 
     requestAnimationFrame(main);
 }
