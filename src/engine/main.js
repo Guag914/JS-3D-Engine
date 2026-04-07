@@ -470,7 +470,7 @@ const main = () => {
     //combine rotations BEFORE use in for loop
     //transformation order: scale, rotate, translate
     //order of multiplication is REVERSE
-    const projMatrix = makeProjM(Math.PI/2, CW / CH, 0.1, 1000);
+    const projMatrix = makeProjM(Math.PI/4, CW / CH, 0.1, 1000);
 
     let camView = multiplyMatMat(cam.q.convertToM(), translateM(  cam.x, cam.y, cam.z));
     let camProj = multiplyMatMat(projMatrix, camView);
