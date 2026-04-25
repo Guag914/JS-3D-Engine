@@ -118,6 +118,31 @@ class Camera {
     rCCW(){ this.q.update(-0.015 * this.r, -Math.sin(this.yaw), 0, Math.cos(this.yaw)); this.roll -= 0.015 * this.r; }
 }
 
+class LightSource {
+    constructor(x, y, z, color, intensity){ //no w because it's not going through render pipeline
+        this.x = x;
+        this.y = y;
+        this.z = z;
+        this.color = color;
+        this.intensity = intensity;
+    }
+
+    calcVectorToPoint(v){
+        let vec = {
+            x: this.x - v.x,
+            y: this.y - v.y,
+            z: this.z - v.z
+        };
+
+        const mag = Math.sqrt(vec.x**2 + vec.y**2 + vec.z**2);
+        vec.x /= mag;
+        vec.y /= mag;
+        vec.z /= mag;
+
+        return vec;
+    }
+}
+
 class Player {
     constructor(x, y, z, w, color){
         this.x = x;
@@ -305,10 +330,29 @@ class Cube {
 }
 
 class Triangle {
-    constructor(v1, v2, v3){
+    constructor(v1, v2, v3, b1, b2, b3){
         this.v1 = new Vertex(v1.x, v1.y, v1.z, v1.w);
         this.v2 = new Vertex(v2.x, v2.y, v2.z, v2.w);
         this.v3 = new Vertex(v3.x, v3.y, v3.z, v3.w);
+
+        this.b1 = b1;
+        this.b2 = b2;
+        this.b3 = b3;
+
+        this.vecA = {x: v2.x - v1.x, y: v2.y - v1.y, z:v2.z - v1.z}
+        this.vecB = {x: v3.x - v1.x, y: v3.y - v1.y, z:v3.z - v1.z}
+
+        this.vecN = {
+            x: this.vecA.y*this.vecB.z - this.vecA.z*this.vecB.y,
+            y: this.vecA.z*this.vecB.x - this.vecA.x*this.vecB.z,
+            z: this.vecA.x*this.vecB.y - this.vecA.y*this.vecB.x
+        }
+
+        //vector normalization
+        const mag = Math.sqrt(this.vecN.x**2 + this.vecN.y**2 + this.vecN.z**2);
+        this.vecN.x /= mag;
+        this.vecN.y /= mag;
+        this.vecN.z /= mag;
     }
 }
 
@@ -434,19 +478,24 @@ const vertexShaderSource = `#version 300 es
     precision mediump float;
 
     in vec4 vertexPosition;
+    in float vertexBrightness;
+    
+    out float fragBrightness;
 
     void main(){
         gl_Position = vertexPosition;
+        fragBrightness = vertexBrightness;
     }
 `;
 
 const fragmentShaderSource = `#version 300 es
     precision mediump float;
-
+    
+    in float fragBrightness;
     out vec4 outputColor;
 
     void main(){
-        outputColor = vec4(1.0, 1.0, 0, 1.0);
+        outputColor = vec4(1.0 * fragBrightness, 1.0 * fragBrightness, 0.0 * fragBrightness, 1.0);
     }
 
 `;
@@ -476,19 +525,35 @@ const webGlInit = () => {
     const vertexAttribLocation = gl.getAttribLocation(shaderProgram, `vertexPosition`);
     if (vertexAttribLocation < 0) { console.log(`Failed to get attrib location for verertexPosition`); }
 
+    const vertexAttribBrightness = gl.getAttribLocation(shaderProgram, `vertexBrightness`);
+    if (vertexAttribBrightness < 0) { console.log(`Failed to get attrib location for vertexBrightness`); }
+
     gl.useProgram(shaderProgram);
     gl.bindVertexArray(vao);
     gl.bindBuffer(gl.ARRAY_BUFFER, gpuTriBuffer);
+
+    //position (first 4 floats)
     gl.vertexAttribPointer(
         vertexAttribLocation, //index
         4, //size
         gl.FLOAT, //type in the actual buffer
         false, //normalized parameter
-        4 * Float32Array.BYTES_PER_ELEMENT, //stride
+        5 * Float32Array.BYTES_PER_ELEMENT, //stride
         0 //offset - how many bytes to skip
     );
 
+    //brightness (5th float)
+    gl.vertexAttribPointer(
+        vertexAttribBrightness, //index
+        1, //size
+        gl.FLOAT, //type in the actual buffer
+        false, //normalized parameter
+        5 * Float32Array.BYTES_PER_ELEMENT, //stride
+        4 * Float32Array.BYTES_PER_ELEMENT //offset - how many bytes to skip
+    );
+
     gl.enableVertexAttribArray(vertexAttribLocation);
+    gl.enableVertexAttribArray(vertexAttribBrightness);
 }
 
 //webgl rendering
@@ -501,9 +566,9 @@ const render = (triBuffer) => {
         const triVert = [];
 
         for (let tri of triBuffer){
-            triVert.push(tri.v1.x/tri.v1.w, tri.v1.y/tri.v1.w, tri.v1.z/tri.v1.w, 1.0);
-            triVert.push(tri.v2.x/tri.v2.w, tri.v2.y/tri.v2.w, tri.v2.z/tri.v2.w, 1.0);
-            triVert.push(tri.v3.x/tri.v3.w, tri.v3.y/tri.v3.w, tri.v3.z/tri.v3.w, 1.0);
+            triVert.push(tri.v1.x/tri.v1.w, tri.v1.y/tri.v1.w, tri.v1.z/tri.v1.w, 1.0, tri.b1);
+            triVert.push(tri.v2.x/tri.v2.w, tri.v2.y/tri.v2.w, tri.v2.z/tri.v2.w, 1.0, tri.b2);
+            triVert.push(tri.v3.x/tri.v3.w, tri.v3.y/tri.v3.w, tri.v3.z/tri.v3.w, 1.0, tri.b3);
         }
 
         const cpuTriBuffer = new Float32Array(triVert); //gpu uses 32 bit to store format
@@ -525,7 +590,7 @@ const render = (triBuffer) => {
         gl.viewport(0, 0, canvas.width, canvas.height);
 
         //Draw call - primitive assembly
-        gl.drawArrays(gl.TRIANGLES, 0, triVert.length / 4);
+        gl.drawArrays(gl.TRIANGLES, 0, triVert.length / 5);
 
         const err = gl.getError();
         if (err !== gl.NO_ERROR) console.log('WebGL error:', err);
@@ -541,8 +606,16 @@ window.addEventListener('resize', () => {
 
 //Main Render Pipeline
 const cam = new Camera(0, 0, -1000, 1); //x, y, z, rate
+let light = new LightSource(0, -500, 0, 'white', 500000);
+
 const main = () => {
+    //update light source position for testing
+    light.x = cam.x;
+    light.y = cam.y;
+    light.z = cam.z;
+
     //upate player logic, then render
+
     if (socket.readyState === WebSocket.OPEN) {  // only send if connected
         const data = {x: cam.x, y: cam.y, z: cam.z, w: 1, r:cam.q};
         socket.send(JSON.stringify(data));
@@ -568,6 +641,17 @@ const main = () => {
             const v2 = c.V[vert[1]];
             const v3 = c.V[vert[2]];
 
+            //brightness calculations
+            let tempTri = new Triangle(v1, v2, v3, 1, 1, 1);
+
+            const dist1 = (light.x-v1.x)**2 + (light.y-v1.y)**2 + (light.z-v1.z)**2;
+            const dist2 = (light.x-v2.x)**2 + (light.y-v2.y)**2 + (light.z-v2.z)**2;
+            const dist3 = (light.x-v3.x)**2 + (light.y-v3.y)**2 + (light.z-v3.z)**2;
+
+            const b1 = Math.min(Math.max(vectorDotProduct(light.calcVectorToPoint(v1), tempTri.vecN) / dist1 * light.intensity, 0.01), 0.9);
+            const b2 = Math.min(Math.max(vectorDotProduct(light.calcVectorToPoint(v2), tempTri.vecN) / dist2 * light.intensity, 0.01), 0.9);
+            const b3 = Math.min(Math.max(vectorDotProduct(light.calcVectorToPoint(v3), tempTri.vecN) / dist3 * light.intensity, 0.01), 0.9);
+
             //vertex projection
             let pv1 = multiplyMatVec(camProj, v1);
             let pv2 = multiplyMatVec(camProj, v2);
@@ -575,7 +659,7 @@ const main = () => {
 
             if (pv1.w <= 0 || pv2.w <= 0 || pv3.w <= 0){ continue; }
 
-            triangleBuffer.push(new Triangle(pv1, pv2, pv3));
+            triangleBuffer.push(new Triangle(pv1, pv2, pv3, b1, b2, b3));
         }
     }
 
