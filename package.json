@@ -1,14 +1,18 @@
 {
-  "name": "node-server",
+  "name": "JS-3D-Engine",
   "version": "1.0.0",
-  "description": "",
+  "description": "An optimized 3d engine made purely in JS with a simple webgl renderer.",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "webgl-test": "cd public && open triangle.html",
+    "server-test": "cd public && open triangle.html",
+    "engine": "cd public && open engine.html",
+    "server": "node server.js",
+    "refresh": " npm install --package-lock-only"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": ["3d", "engine", "js"],
+  "author": "Akshay Gillett",
+  "license": "UNLICENSED",
   "dependencies": {
     "gl-matrix": "^3.4.4",
     "ws": "^8.19.0"

@@ -1,13 +1,14 @@
 const canvas = document.getElementById('engine-canvas');
 canvas.width = window.innerWidth;
 canvas.height = window.innerHeight;
-const ctx = canvas.getContext('2d');
 
 //constants:
 const CW = canvas.width;
 const CH = canvas.height;
-const CW2 = CW/2;
-const CH2 = CH/2;
+
+const gl = canvas.getContext('webgl2');
+gl.enable(gl.DEPTH_TEST);
+const vao = gl.createVertexArray();
 
 const pressedKeys = {};
 document.addEventListener('keydown', (event) => { pressedKeys[event.code] = true; });
@@ -31,17 +32,17 @@ class Camera {
         this.roll = 0;
 
         //vectors moved into class scope for external movement calls
-        let forward = {x: 0, y: 0, z: 0};
-        let right = {x: 0, y: 0, z: 0};
-        let up = {x: 0, y: 0, z: 0};
+        this.forward = {x: 0, y: 0, z: 0};
+        this.right = {x: 0, y: 0, z: 0};
+        this.up = {x: 0, y: 0, z: 0};
     }
 
     controls(){
         const rotM = this.q.convertToM();
 
-        this.forward = { x: rotM[0][2], y: 0, z: rotM[2][2] }; //store as a vector instead of just a scalar
-        this.right =   { x: rotM[0][0], y: 0, z: rotM[2][0] };
-        this.up =      { x: rotM[0][1], y: rotM[1][1], z: rotM[2][1] };
+        this.forward = { x: rotM[0][2], y: rotM[1][2], z: rotM[2][2] };
+        this.right   = { x: rotM[0][0], y: rotM[1][0], z: rotM[2][0] };
+        this.up      = { x: rotM[0][1], y: rotM[1][1], z: rotM[2][1] };
 
         const fLength = Math.sqrt(this.forward.x**2 + this.forward.y**2 + this.forward.z**2);
         const rLength = Math.sqrt(this.right.x**2 + this.right.y**2 + this.right.z**2);
@@ -68,17 +69,10 @@ class Camera {
         this.right = vectorByNumber(1/rightLength, this.right); //normalize vectors
         this.up = vectorByNumber(1/upLength, this.up);
 
-        //debug
-//        console.log(vectorDotProduct(forward, right).toFixed(6)); // should be ~0 if orthogonal
-//        console.log(`
-//            X: ${this.x}, Y: ${this.y}, Z: ${this.z},
-//            \n Roll: ${this.roll}, Pitch: ${this.pitch}, Yaw: ${this.yaw}
-//        `);
-
-//        console.log(`ForwardX: ${forward.x}\nForwardZ: ${forward.z}`);
         //Movement
         if (pressedKeys['KeyW']){ this.mForward(); }
         if (pressedKeys['KeyS']){ this.mBackward(); }
+
         if (pressedKeys['KeyA']){ this.mLeft(); }
         if (pressedKeys['KeyD']){ this.mRight(); }
 
@@ -88,6 +82,7 @@ class Camera {
         //Rotations
         if (pressedKeys['ArrowLeft']){ this.rLeft(); }
         if (pressedKeys['ArrowRight']){ this.rRight(); }
+
         if (pressedKeys['ArrowUp']){ this.rUp(); }
         if (pressedKeys['ArrowDown']){ this.rDown(); }
 
@@ -95,26 +90,36 @@ class Camera {
         if (pressedKeys['KeyQ']){ this.rCCW(); }
     }
 
+    //Movement Methods
     mForward(){ this.x -= this.forward.x * this.r * 10; this.y -= this.forward.y * this.r * 10; this.z += this.forward.z * this.r * 10; }
     mBackward(){ this.x += this.forward.x * this.r * 10; this.y += this.forward.y * this.r * 10; this.z -= this.forward.z * this.r * 10; }
-    mLeft(){ this.x -= this.right.x * this.r * 10; this.z += this.right.z * this.r * 10; }
-    mRight(){ this.x += this.right.x * this.r * 10; this.z -= this.right.z * this.r * 10; }
+
+    mLeft(){ this.x -= this.right.x * this.r * 10; this.y -= this.right.y * this.r * 10; this.z += this.right.z * this.r * 10; }
+    mRight(){ this.x += this.right.x * this.r * 10; this.y += this.right.y * this.r * 10; this.z -= this.right.z * this.r * 10; }
+
+    //test using static +++ || --- not --+ && ++-
+    // mForward(){  this.x += this.forward.x * this.r * 10; this.y += this.forward.y * this.r * 10; this.z += this.forward.z * this.r * 10; }
+    // mBackward(){ this.x -= this.forward.x * this.r * 10; this.y -= this.forward.y * this.r * 10; this.z -= this.forward.z * this.r * 10; }
+    //
+    // mLeft(){  this.x -= this.right.x * this.r * 10; this.y -= this.right.y * this.r * 10; this.z -= this.right.z * this.r * 10; }
+    // mRight(){ this.x += this.right.x * this.r * 10; this.y += this.right.y * this.r * 10; this.z += this.right.z * this.r * 10; }
+
     mUp(){ this.y += this.up.y * this.r * 10; }
     mDown(){ this.y -= this.up.y * this.r * 10; }
 
+    //Rotation Methods
     rUp(){ if (this.pitch < 1.5){this.q.update(0.015 * this.r, Math.cos(this.yaw), 0, Math.sin(this.yaw)); this.pitch += 0.015 * this.r;} }
     rDown(){ if (this.pitch > -1.5){this.q.update(-0.015 * this.r, Math.cos(this.yaw), 0, Math.sin(this.yaw)); this.pitch -= 0.015 * this.r;} }
+
     rLeft(){ this.q.update(0.015 * this.r, 0, 1, 0); this.yaw += 0.015 * this.r; }
     rRight(){ this.q.update(-0.015 * this.r, 0, 1, 0); this.yaw -= 0.015 * this.r; }
+
     rCW(){ this.q.update(0.015 * this.r, -Math.sin(this.yaw), 0, Math.cos(this.yaw)); this.roll += 0.015 * this.r; }
     rCCW(){ this.q.update(-0.015 * this.r, -Math.sin(this.yaw), 0, Math.cos(this.yaw)); this.roll -= 0.015 * this.r; }
 }
 
-//webscript code
-const socket = new WebSocket('ws://localhost:3000');
-//player class
 class Player {
-    constructor(x, y, z, w, color, id){
+    constructor(x, y, z, w, color){
         this.x = x;
         this.y = y;
         this.z = z;
@@ -148,8 +153,12 @@ class Player {
             new Vertex(this.x - this.pos.width, this.y + this.pos.height, this.z + this.pos.depth, this.w), // 7: top-left-back
         ];
     }
-//    render(){  } //render red verticies for now
+
+    //handle rendering within the main loop
 }
+
+//websocket code
+const socket = new WebSocket('ws://localhost:3000');
 
 //other player scripts
 const players = new Map();
@@ -166,28 +175,32 @@ socket.onmessage = (event) => {
         const currRotation = otherPlayers[id].rotation;
         const currColor = otherPlayers[id].color;
 
-        if (!players.has(id)){ players.set(id, new Player(currX, currY, currZ, currW, currColor, id)) }
+        if (!players.has(id)){ players.set(id, new Player(currX, currY, currZ, currW, currColor)) }
         else {
             const currPlayer = players.get(id);
             currPlayer.x = currX;
             currPlayer.y = currY;
             currPlayer.z = currZ;
             currPlayer.w = currW;
-            currPlayer.rotation = currRotation;
+
+
+            currPlayer.rotation = new Quaternion(
+                currRotation.w,
+                currRotation.x,
+                currRotation.y,
+                currRotation.z
+            );
+
             currPlayer.color = currColor;
         }
 
     }
 
-    for (const [id] of players) {
-        if (!(id in otherPlayers)) {
-            players.delete(id);
-        }
-    }
+    for (const [id] of players) { if (!(id in otherPlayers)) { players.delete(id); } }
 }
 
 class Quaternion{
-    constructor(w, x, y, z){
+    constructor(w, x, y, z){ // ai + bj + ck d || a + bi + cj + dk
         this.w = w;
         this.x = x;
         this.y = y;
@@ -236,6 +249,16 @@ class Quaternion{
             [0, 0, 0, 1]
         ];
     }
+
+    //test with +++ || --- coordinates not ++- && --+
+    // convertToM(){
+    //     return [
+    //         [-(1 - 2*(this.y**2+this.z**2)), -(2*(this.x*this.y+this.w*this.z)),  -(2*(this.x*this.z-this.w*this.y)), 0],
+    //         [2*(this.x*this.y-this.w*this.z),  1 - 2*(this.x**2+this.z**2), 2*(this.y*this.z+this.w*this.x), 0],
+    //         [2*(this.x*this.z+this.w*this.y),  2*(this.y*this.z-this.w*this.x), 1 - 2*(this.x**2+this.y**2), 0],
+    //         [0, 0, 0, 1]
+    //     ];
+    // }
 
     quaternionDotProduct(q1, q2) { return q1.x * q2.x + q1.y * q2.y + q1.z * q2.z + q1.w * q2.w; }
 }
@@ -286,22 +309,6 @@ class Triangle {
         this.v1 = new Vertex(v1.x, v1.y, v1.z, v1.w);
         this.v2 = new Vertex(v2.x, v2.y, v2.z, v2.w);
         this.v3 = new Vertex(v3.x, v3.y, v3.z, v3.w);
-        this.depth = (this.v1.z+this.v2.z+this.v3.z)/3;
-    }
-
-    draw(fill){
-        ctx.save();
-        ctx.beginPath();
-        ctx.strokeStyle = 'black';
-        ctx.moveTo(this.v1.x, this.v1.y);
-        ctx.lineTo(this.v2.x, this.v2.y);
-        ctx.lineTo(this.v3.x, this.v3.y);
-        ctx.closePath();
-
-        ctx.fillStyle = fill;
-        ctx.fill();
-        ctx.stroke();
-        ctx.restore();
     }
 }
 
@@ -311,14 +318,6 @@ class Vertex {
         this.y = y;
         this.z = z;
         this.w = w;
-    }
-
-    draw(){
-        ctx.beginPath();
-        ctx.arc((CW2 + 1/2*this.x)/this.w, (CH2 - 1/2*this.y)/this.w, 3, 0, 2 * Math.PI);
-        ctx.fillStyle = 'white';
-        ctx.fill();
-        ctx.closePath();
     }
 }
 
@@ -428,51 +427,135 @@ const cubes = [
     new Cube(600, 0,-400, 1, cubeSize, cubeSize, cubeSize),
 ];
 
-//Screen functions
-const toScreen = (x, y, z, w) => {
-    return {
-        x: CW2 + (x / w)*CW2,
-        y: CH2 - (y / w)*CH2,
-        z: z / w
+//init compiling
+//glsl source vertex and fragment
+const gpuTriBuffer = gl.createBuffer();
+const vertexShaderSource = `#version 300 es
+    precision mediump float;
+
+    in vec4 vertexPosition;
+
+    void main(){
+        gl_Position = vertexPosition;
     }
+`;
+
+const fragmentShaderSource = `#version 300 es
+    precision mediump float;
+
+    out vec4 outputColor;
+
+    void main(){
+        outputColor = vec4(1.0, 1.0, 0, 1.0);
+    }
+
+`;
+const webGlInit = () => {
+    //compile shaders with source code
+    const vertexShader = gl.createShader(gl.VERTEX_SHADER);
+    gl.shaderSource(vertexShader, vertexShaderSource);
+    gl.compileShader(vertexShader);
+
+    //check for source errors and return if true
+    if (!gl.getShaderParameter(vertexShader, gl.COMPILE_STATUS)) { console.log(`Failed to compile vertex shader: ${gl.getShaderInfoLog(vertexShader)}`); }
+
+    const fragmentShader = gl.createShader(gl.FRAGMENT_SHADER);
+    gl.shaderSource(fragmentShader, fragmentShaderSource);
+    gl.compileShader(fragmentShader);
+
+    //check for source errors and return if true
+    if (!gl.getShaderParameter(fragmentShader, gl.COMPILE_STATUS)) { console.log(`Failed to compile fragment shader: ${gl.getShaderInfoLog(fragmentShader)}`); }
+
+    const shaderProgram = gl.createProgram();
+    gl.attachShader(shaderProgram, vertexShader);
+    gl.attachShader(shaderProgram, fragmentShader);
+    gl.linkProgram(shaderProgram);
+
+    if (!gl.getProgramParameter(shaderProgram, gl.LINK_STATUS)) { console.log(`Failed to link shader: ${gl.getProgramInfoLog(shaderProgram)}`); }
+
+    const vertexAttribLocation = gl.getAttribLocation(shaderProgram, `vertexPosition`);
+    if (vertexAttribLocation < 0) { console.log(`Failed to get attrib location for verertexPosition`); }
+
+    gl.useProgram(shaderProgram);
+    gl.bindVertexArray(vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, gpuTriBuffer);
+    gl.vertexAttribPointer(
+        vertexAttribLocation, //index
+        4, //size
+        gl.FLOAT, //type in the actual buffer
+        false, //normalized parameter
+        4 * Float32Array.BYTES_PER_ELEMENT, //stride
+        0 //offset - how many bytes to skip
+    );
+
+    gl.enableVertexAttribArray(vertexAttribLocation);
 }
 
-const drawPoints = (x, y, color) => {
-        ctx.beginPath();
-        ctx.arc(x, y, 3, 0, 2 * Math.PI);
-        ctx.fillStyle = color;
-        ctx.fill();
-        ctx.closePath();
+//webgl rendering
+const render = (triBuffer) => {
+    try {
+
+        if (!canvas){ console.log('Cannot get canvas element'); return; }
+        if (!gl){ console.log('Browser does not support webgl2'); return; }
+
+        const triVert = [];
+
+        for (let tri of triBuffer){
+            triVert.push(tri.v1.x/tri.v1.w, tri.v1.y/tri.v1.w, tri.v1.z/tri.v1.w, 1.0);
+            triVert.push(tri.v2.x/tri.v2.w, tri.v2.y/tri.v2.w, tri.v2.z/tri.v2.w, 1.0);
+            triVert.push(tri.v3.x/tri.v3.w, tri.v3.y/tri.v3.w, tri.v3.z/tri.v3.w, 1.0);
+        }
+
+        const cpuTriBuffer = new Float32Array(triVert); //gpu uses 32 bit to store format
+        gl.bindBuffer(gl.ARRAY_BUFFER, gpuTriBuffer);
+        gl.bufferData(gl.ARRAY_BUFFER, cpuTriBuffer, gl.DYNAMIC_DRAW);
+
+        //DEBUG
+        // console.log('First triangle NDC coords:');
+        // console.log(`v1: ${cpuTriBuffer[0].toFixed(3)}, ${cpuTriBuffer[1].toFixed(3)}, ${cpuTriBuffer[2].toFixed(3)}, ${cpuTriBuffer[3].toFixed(3)}`);
+        // console.log(`v2: ${cpuTriBuffer[4].toFixed(3)}, ${cpuTriBuffer[5].toFixed(3)}, ${cpuTriBuffer[6].toFixed(3)}, ${cpuTriBuffer[7].toFixed(3)}`);
+        // console.log(`v3: ${cpuTriBuffer[8].toFixed(3)}, ${cpuTriBuffer[9].toFixed(3)}, ${cpuTriBuffer[10].toFixed(3)}, ${cpuTriBuffer[11].toFixed(3)}`);
+        // console.log('buffer length:', cpuTriBuffer.length);
+
+        gl.clearColor(0.08, 0.08, 0.08, 1); //gray bg
+        gl.clear(gl.DEPTH_BUFFER_BIT | gl.COLOR_BUFFER_BIT);
+        gl.enable(gl.DEPTH_TEST);
+
+        //Rasterizer - which pixels are part of a triangle
+        gl.viewport(0, 0, canvas.width, canvas.height);
+
+        //Draw call - primitive assembly
+        gl.drawArrays(gl.TRIANGLES, 0, triVert.length / 4);
+
+        const err = gl.getError();
+        if (err !== gl.NO_ERROR) console.log('WebGL error:', err);
+
+    } catch (e){console.log(e);}
 }
 
-const drawLine = (x1, y1, x2, y2, color) => {
-    ctx.save();
-    ctx.beginPath();
-    ctx.strokeStyle = color;
-    ctx.moveTo(x1, y1);
-    ctx.lineTo(x2, y2);
-    ctx.stroke();
-    ctx.restore();
-}
+window.addEventListener('resize', () => {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    gl.viewport(0, 0, canvas.width, canvas.height);
+});
 
+//Main Render Pipeline
 const cam = new Camera(0, 0, -1000, 1); //x, y, z, rate
 const main = () => {
     //upate player logic, then render
     if (socket.readyState === WebSocket.OPEN) {  // only send if connected
         const data = {x: cam.x, y: cam.y, z: cam.z, w: 1, r:cam.q};
         socket.send(JSON.stringify(data));
-    };
+    }
 
-    let projectedMatrix = [];
-    ctx.clearRect(0, 0, CW, CH);
     cam.controls();
 
-    //combine rotations BEFORE use in for loop
+    //combine thererotations BEFORE use in for loop
     //transformation order: scale, rotate, translate
     //order of multiplication is REVERSE
-    const projMatrix = makeProjM(Math.PI/2, CW / CH, 0.1, 1000);
+    const projMatrix = makeProjM(Math.PI/2, CW / CH, 1, 10000); // 120 degrees
 
-    let camView = multiplyMatMat(cam.q.convertToM(), translateM(  cam.x, cam.y, cam.z));
+    let camView = multiplyMatMat(cam.q.convertToM(), translateM(  -cam.x, -cam.y, -cam.z  ));
     let camProj = multiplyMatMat(projMatrix, camView);
 
     let triangleBuffer = [];
@@ -490,14 +573,9 @@ const main = () => {
             let pv2 = multiplyMatVec(camProj, v2);
             let pv3 = multiplyMatVec(camProj, v3);
 
-            if (pv1.w >= 0 || pv2.w >= 0 || pv3.w >= 0){ continue; }
+            if (pv1.w <= 0 || pv2.w <= 0 || pv3.w <= 0){ continue; }
 
-            //vertex coords convert
-            const cv1 = toScreen(pv1.x, pv1.y, pv1.z, pv1.w);
-            const cv2 = toScreen(pv2.x, pv2.y, pv2.z, pv2.w);
-            const cv3 = toScreen(pv3.x, pv3.y, pv3.z, pv3.w);
-
-            triangleBuffer.push(new Triangle(cv1, cv2, cv3));
+            triangleBuffer.push(new Triangle(pv1, pv2, pv3));
         }
     }
 
@@ -505,31 +583,28 @@ const main = () => {
     for (const [id, player] of players) { //iterate through map of players
             player.updatePos();
             for (const vert of player.pos.M){ //iterate through vertex map of each player
-                //player verticies
+                //verticies
                 const v1 = player.pos.V[vert[0]];
                 const v2 = player.pos.V[vert[1]];
                 const v3 = player.pos.V[vert[2]];
 
-                //player vertex projection
+                //vertex projection
                 let pv1 = multiplyMatVec(camProj, v1);
                 let pv2 = multiplyMatVec(camProj, v2);
                 let pv3 = multiplyMatVec(camProj, v3);
 
-                if (pv1.w >= 0 || pv2.w >= 0 || pv3.w >= 0){ continue; }
+                if (pv1.w <= 0 || pv2.w <= 0 || pv3.w <= 0){ continue; }
 
-                //player vertex coords convert
-                const cv1 = toScreen(pv1.x, pv1.y, pv1.z, pv1.w);
-                const cv2 = toScreen(pv2.x, pv2.y, pv2.z, pv2.w);
-                const cv3 = toScreen(pv3.x, pv3.y, pv3.z, pv3.w);
-
-                triangleBuffer.push(new Triangle(cv1, cv2, cv3));
+                triangleBuffer.push(new Triangle(pv1, pv2, pv3));
             }
         }
 
-    triangleBuffer.sort((a, b) => a.depth - b.depth);
-    for (let tri of triangleBuffer){ tri.draw('white'); }
+
+
+     render(triangleBuffer);
 
     requestAnimationFrame(main);
 }
 
+webGlInit();
 main();

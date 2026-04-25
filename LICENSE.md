@@ -1,1 +1,1 @@
-© 2026 All Rights Reserved. No commercial distrubution allowed. For personal use only. 
+© 2026 All Rights Reserved. No commercial distrubution is allowed. For personal use only. 
