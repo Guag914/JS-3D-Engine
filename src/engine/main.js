@@ -116,15 +116,84 @@ class Camera {
 
     rCW(){ this.q.update(0.015 * this.r, -Math.sin(this.yaw), 0, Math.cos(this.yaw)); this.roll += 0.015 * this.r; }
     rCCW(){ this.q.update(-0.015 * this.r, -Math.sin(this.yaw), 0, Math.cos(this.yaw)); this.roll -= 0.015 * this.r; }
+
+    calcVectorToPoint(v){
+        let vec = {
+            x: this.x - v.x,
+            y: this.y - v.y,
+            z: this.z - v.z
+        };
+
+        const mag = Math.sqrt(vec.x**2 + vec.y**2 + vec.z**2);
+        vec.x /= mag;
+        vec.y /= mag;
+        vec.z /= mag;
+
+        return vec;
+    }
 }
 
-class LightSource {
-    constructor(x, y, z, color, intensity){ //no w because it's not going through render pipeline
+const clipTriangle = (v1, v2, v3, r1, g1, b1, r2, g2, b2, r3, g3, b3) => {
+    const inside = [];
+    const outside = [];
+
+    if (v1.w > 0) inside.push({v: v1, r: r1, g: g1, b: b1}); else outside.push({v: v1, r: r1, g: g1, b: b1});
+    if (v2.w > 0) inside.push({v: v2, r: r2, g: g2, b: b2}); else outside.push({v: v2, r: r2, g: g2, b: b2});
+    if (v3.w > 0) inside.push({v: v3, r: r3, g: g3, b: b3}); else outside.push({v: v3, r: r3, g: g3, b: b3});
+
+    const clip = (A, B, Ar, Ag, Ab, Br, Bg, Bb) => {
+        const t = A.w / (A.w - B.w);
+        return {
+            v: {
+                x: A.x + t * (B.x - A.x),
+                y: A.y + t * (B.y - A.y),
+                z: A.z + t * (B.z - A.z),
+                w: A.w + t * (B.w - A.w)
+            },
+            r: Ar + t * (Br - Ar),
+            g: Ag + t * (Bg - Ag),
+            b: Ab + t * (Bb - Ab)
+        };
+    }
+
+    if (inside.length === 0) return [];
+
+    if (inside.length === 3) return [new Triangle(v1, v2, v3, r1, g1, b1, r2, g2, b2, r3, g3, b3)];
+
+    if (inside.length === 1){
+        const a = inside[0];
+        const i1 = clip(a.v, outside[0].v, a.r, a.g, a.b, outside[0].r, outside[0].g, outside[0].b);
+        const i2 = clip(a.v, outside[1].v, a.r, a.g, a.b, outside[1].r, outside[1].g, outside[1].b);
+        return [new Triangle(a.v, i1.v, i2.v, a.r, a.g, a.b, i1.r, i1.g, i1.b, i2.r, i2.g, i2.b)];
+    }
+
+    if (inside.length === 2){
+        const a = inside[0];
+        const b = inside[1];
+        const out = outside[0];
+        const i1 = clip(a.v, out.v, a.r, a.g, a.b, out.r, out.g, out.b);
+        const i2 = clip(b.v, out.v, b.r, b.g, b.b, out.r, out.g, out.b);
+        return [
+            new Triangle(a.v, b.v, i1.v, a.r, a.g, a.b, b.r, b.g, b.b, i1.r, i1.g, i1.b),
+            new Triangle(b.v, i2.v, i1.v, b.r, b.g, b.b, i2.r, i2.g, i2.b, i1.r, i1.g, i1.b)
+        ];
+    }
+
+    return [];
+}
+
+class PointLightSource {
+    constructor(x, y, z, intensity, r, g, b){ //no w because it's not going through render pipeline
         this.x = x;
         this.y = y;
         this.z = z;
-        this.color = color;
+
         this.intensity = intensity;
+
+        //use values from 0 to 1 like webgl
+        this.r = r;
+        this.g = g;
+        this.b = b;
     }
 
     calcVectorToPoint(v){
@@ -144,17 +213,20 @@ class LightSource {
 }
 
 class Player {
-    constructor(x, y, z, w, color){
+    constructor(x, y, z, w, r, g, b){
         this.x = x;
         this.y = y;
         this.z = z;
         this.w = w;
 
-        this.color = color;
+        this.r = r;
+        this.g = g;
+        this.b = b;
+
         this.rotation = cam.q;
 
         //placeholder cube for rendering
-        this.pos = new Cube(this.x, this.y, this.z, this.w, 100, 100, 100);
+        this.pos = new Cube(this.x, this.y, this.z, this.w, 100, 100, 100, 0, 0, 0);
     }
 
     updatePos(){
@@ -163,19 +235,15 @@ class Player {
         this.pos.z = this.z;
         this.pos.w = this.w;
 
-        this.rotation = cam.q;
-
         this.pos.V = [
-            // Front face (z - depth)
-            new Vertex(this.x + this.pos.width, this.y + this.pos.height, this.z - this.pos.depth, this.w), // 0: top-right-front
-            new Vertex(this.x + this.pos.width, this.y - this.pos.height, this.z - this.pos.depth, this.w), // 1: bot-right-front
-            new Vertex(this.x - this.pos.width, this.y - this.pos.height, this.z - this.pos.depth, this.w), // 2: bot-left-front
-            new Vertex(this.x - this.pos.width, this.y + this.pos.height, this.z - this.pos.depth, this.w), // 3: top-left-front
-            // Back face (z + depth)
-            new Vertex(this.x + this.pos.width, this.y + this.pos.height, this.z + this.pos.depth, this.w), // 4: top-right-back
-            new Vertex(this.x + this.pos.width, this.y - this.pos.height, this.z + this.pos.depth, this.w), // 5: bot-right-back
-            new Vertex(this.x - this.pos.width, this.y - this.pos.height, this.z + this.pos.depth, this.w), // 6: bot-left-back
-            new Vertex(this.x - this.pos.width, this.y + this.pos.height, this.z + this.pos.depth, this.w), // 7: top-left-back
+            new Vertex( this.pos.width,  this.pos.height, -this.pos.depth, 1),
+            new Vertex( this.pos.width, -this.pos.height, -this.pos.depth, 1),
+            new Vertex(-this.pos.width, -this.pos.height, -this.pos.depth, 1),
+            new Vertex(-this.pos.width,  this.pos.height, -this.pos.depth, 1),
+            new Vertex( this.pos.width,  this.pos.height,  this.pos.depth, 1),
+            new Vertex( this.pos.width, -this.pos.height,  this.pos.depth, 1),
+            new Vertex(-this.pos.width, -this.pos.height,  this.pos.depth, 1),
+            new Vertex(-this.pos.width,  this.pos.height,  this.pos.depth, 1),
         ];
     }
 
@@ -197,17 +265,26 @@ socket.onmessage = (event) => {
         const currZ = otherPlayers[id].z;
         const currW = otherPlayers[id].w;
 
+        // const currRotation = otherPlayers[id].rotation;
         const currRotation = otherPlayers[id].rotation;
-        const currColor = otherPlayers[id].color;
 
-        if (!players.has(id)){ players.set(id, new Player(currX, currY, currZ, currW, currColor)) }
+        const currR = otherPlayers[id].r;
+        const currG = otherPlayers[id].g;
+        const currB = otherPlayers[id].b;
+
+        const currFR = otherPlayers[id].fcr;
+        const currFG = otherPlayers[id].fcg;
+        const currFB = otherPlayers[id].fcb;
+
+        console.log("CurrG " + currG);
+
+        if (!players.has(id)){ players.set(id, new Player(currX, currY, currZ, currW, currR, currG, currB)) }
         else {
             const currPlayer = players.get(id);
             currPlayer.x = currX;
             currPlayer.y = currY;
             currPlayer.z = currZ;
             currPlayer.w = currW;
-
 
             currPlayer.rotation = new Quaternion(
                 currRotation.w,
@@ -216,7 +293,14 @@ socket.onmessage = (event) => {
                 currRotation.z
             );
 
-            currPlayer.color = currColor;
+            currPlayer.r = currR;
+            currPlayer.g = currG;
+            currPlayer.b = currB;
+
+            //implement multicolor cubes in pipeline later
+            currPlayer.fcr = currFR;
+            currPlayer.fcg = currFG;
+            currPlayer.fcb = currFB;
         }
 
     }
@@ -289,11 +373,15 @@ class Quaternion{
 }
 
 class Cube {
-    constructor(x, y, z, w, width, height, depth) {
+    constructor(x, y, z, w, width, height, depth, r, g, b) {
         this.x = x;
         this.y = y;
         this.z = z;
         this.w = w;
+
+        this.r = r;
+        this.g = g;
+        this.b = b;
 
         this.width = width / 2;
         this.height = height / 2;
@@ -330,10 +418,18 @@ class Cube {
 }
 
 class Triangle {
-    constructor(v1, v2, v3, b1, b2, b3){
+    constructor(v1, v2, v3, r1, g1, b1, r2, g2, b2, r3, g3, b3){
         this.v1 = new Vertex(v1.x, v1.y, v1.z, v1.w);
         this.v2 = new Vertex(v2.x, v2.y, v2.z, v2.w);
         this.v3 = new Vertex(v3.x, v3.y, v3.z, v3.w);
+
+        this.r1 = r1;
+        this.r2 = r2;
+        this.r3 = r3;
+
+        this.g1 = g1;
+        this.g2 = g2;
+        this.g3 = g3;
 
         this.b1 = b1;
         this.b2 = b2;
@@ -446,29 +542,58 @@ const multiplyMatMat = (a, b) => {
     return m;
 }
 
-const cubeSize = 200;
+const negateMat = (m) =>{
+    return {
+        x: m[0][0]*-1 + m[0][1]*-1 + m[0][2]*-1 + m[0][3]*-1,
+        y: m[1][0]*-1 + m[1][1]*-1 + m[1][2]*-1 + m[1][3]*-1,
+        z: m[2][0]*-1 + m[2][1]*-1 + m[2][2]*-1 + m[2][3]*-1,
+        w: m[3][0]*-1 + m[3][1]*-1 + m[3][2]*-1 + m[3][3]*-1,
+    }
+}
+
+const s = 200;
 
 const cubes = [
-    // back wall
-    new Cube(-600, 0, 400, 1, cubeSize, cubeSize, cubeSize),
-    new Cube(-400, 0, 400, 1, cubeSize, cubeSize, cubeSize),
-    new Cube(-200, 0, 400, 1, cubeSize, cubeSize, cubeSize),
-    new Cube(0,    0, 400, 1, cubeSize, cubeSize, cubeSize),
-    new Cube(200,  0, 400, 1, cubeSize, cubeSize, cubeSize),
-    new Cube(400,  0, 400, 1, cubeSize, cubeSize, cubeSize),
-    new Cube(600,  0, 400, 1, cubeSize, cubeSize, cubeSize),
+    // --- CEILING ---
+    new Cube(-600, 400, -400, 1, s, s, s, 1, 1, 1),
+    new Cube(-400, 400, -400, 1, s, s, s, 1, 1, 1),
+    new Cube(-200, 400, -400, 1, s, s, s, 1, 1, 1),
+    new Cube(   0, 400, -400, 1, s, s, s, 1, 1, 1),
+    new Cube( 200, 400, -400, 1, s, s, s, 1, 1, 1),
+    new Cube( 400, 400, -400, 1, s, s, s, 1, 1, 1),
+    new Cube( 600, 400, -400, 1, s, s, s, 1, 1, 1),
 
-    // left wall
-    new Cube(-600, 0, 200, 1, cubeSize, cubeSize, cubeSize),
-    new Cube(-600, 0,   0, 1, cubeSize, cubeSize, cubeSize),
-    new Cube(-600, 0,-200, 1, cubeSize, cubeSize, cubeSize),
-    new Cube(-600, 0,-400, 1, cubeSize, cubeSize, cubeSize),
+    new Cube(-600, 400, -200, 1, s, s, s, 1, 1, 1),
+    new Cube(-400, 400, -200, 1, s, s, s, 1, 1, 1),
+    new Cube(-200, 400, -200, 1, s, s, s, 1, 1, 1),
+    new Cube(   0, 400, -200, 1, s, s, s, 1, 1, 1),
+    new Cube( 200, 400, -200, 1, s, s, s, 1, 1, 1),
+    new Cube( 400, 400, -200, 1, s, s, s, 1, 1, 1),
+    new Cube( 600, 400, -200, 1, s, s, s, 1, 1, 1),
 
-    // right wall
-    new Cube(600, 0, 200, 1, cubeSize, cubeSize, cubeSize),
-    new Cube(600, 0,   0, 1, cubeSize, cubeSize, cubeSize),
-    new Cube(600, 0,-200, 1, cubeSize, cubeSize, cubeSize),
-    new Cube(600, 0,-400, 1, cubeSize, cubeSize, cubeSize),
+    new Cube(-600, 400, 0, 1, s, s, s, 1, 1, 1),
+    new Cube(-400, 400, 0, 1, s, s, s, 1, 1, 1),
+    new Cube(-200, 400, 0, 1, s, s, s, 1, 1, 1),
+    new Cube(   0, 400, 0, 1, s, s, s, 1, 1, 1),
+    new Cube( 200, 400, 0, 1, s, s, s, 1, 1, 1),
+    new Cube( 400, 400, 0, 1, s, s, s, 1, 1, 1),
+    new Cube( 600, 400, 0, 1, s, s, s, 1, 1, 1),
+
+    new Cube(-600, 400, 200, 1, s, s, s, 1, 1, 1),
+    new Cube(-400, 400, 200, 1, s, s, s, 1, 1, 1),
+    new Cube(-200, 400, 200, 1, s, s, s, 1, 1, 1),
+    new Cube(   0, 400, 200, 1, s, s, s, 1, 1, 1),
+    new Cube( 200, 400, 200, 1, s, s, s, 1, 1, 1),
+    new Cube( 400, 400, 200, 1, s, s, s, 1, 1, 1),
+    new Cube( 600, 400, 200, 1, s, s, s, 1, 1, 1),
+
+    new Cube(-600, 400, 400, 1, s, s, s, 1, 1, 1),
+    new Cube(-400, 400, 400, 1, s, s, s, 1, 1, 1),
+    new Cube(-200, 400, 400, 1, s, s, s, 1, 1, 1),
+    new Cube(   0, 400, 400, 1, s, s, s, 1, 1, 1),
+    new Cube( 200, 400, 400, 1, s, s, s, 1, 1, 1),
+    new Cube( 400, 400, 400, 1, s, s, s, 1, 1, 1),
+    new Cube( 600, 400, 400, 1, s, s, s, 1, 1, 1),
 ];
 
 //init compiling
@@ -478,9 +603,9 @@ const vertexShaderSource = `#version 300 es
     precision mediump float;
 
     in vec4 vertexPosition;
-    in float vertexBrightness;
+    in vec3 vertexBrightness;
     
-    out float fragBrightness;
+    out vec3 fragBrightness;
 
     void main(){
         gl_Position = vertexPosition;
@@ -491,11 +616,11 @@ const vertexShaderSource = `#version 300 es
 const fragmentShaderSource = `#version 300 es
     precision mediump float;
     
-    in float fragBrightness;
+    in vec3 fragBrightness;
     out vec4 outputColor;
 
     void main(){
-        outputColor = vec4(1.0 * fragBrightness, 1.0 * fragBrightness, 0.0 * fragBrightness, 1.0);
+        outputColor = vec4(fragBrightness, 1.0);
     }
 
 `;
@@ -538,17 +663,17 @@ const webGlInit = () => {
         4, //size
         gl.FLOAT, //type in the actual buffer
         false, //normalized parameter
-        5 * Float32Array.BYTES_PER_ELEMENT, //stride
+        7 * Float32Array.BYTES_PER_ELEMENT, //stride
         0 //offset - how many bytes to skip
     );
 
     //brightness (5th float)
     gl.vertexAttribPointer(
         vertexAttribBrightness, //index
-        1, //size
+        3, //size
         gl.FLOAT, //type in the actual buffer
         false, //normalized parameter
-        5 * Float32Array.BYTES_PER_ELEMENT, //stride
+        7 * Float32Array.BYTES_PER_ELEMENT, //stride
         4 * Float32Array.BYTES_PER_ELEMENT //offset - how many bytes to skip
     );
 
@@ -566,9 +691,11 @@ const render = (triBuffer) => {
         const triVert = [];
 
         for (let tri of triBuffer){
-            triVert.push(tri.v1.x/tri.v1.w, tri.v1.y/tri.v1.w, tri.v1.z/tri.v1.w, 1.0, tri.b1);
-            triVert.push(tri.v2.x/tri.v2.w, tri.v2.y/tri.v2.w, tri.v2.z/tri.v2.w, 1.0, tri.b2);
-            triVert.push(tri.v3.x/tri.v3.w, tri.v3.y/tri.v3.w, tri.v3.z/tri.v3.w, 1.0, tri.b3);
+            // const brightness = (tri.b1+tri.b2+tri.b3)/3; //use raw values for smooth shading (gpu interpolation) - removed because of significant interpolation issues
+
+            triVert.push(tri.v1.x, tri.v1.y, tri.v1.z, tri.v1.w, tri.r1, tri.g1, tri.b1);
+            triVert.push(tri.v2.x, tri.v2.y, tri.v2.z, tri.v2.w, tri.r2, tri.g2, tri.b2);
+            triVert.push(tri.v3.x, tri.v3.y, tri.v3.z, tri.v3.w, tri.r3, tri.g3, tri.b3);
         }
 
         const cpuTriBuffer = new Float32Array(triVert); //gpu uses 32 bit to store format
@@ -590,7 +717,7 @@ const render = (triBuffer) => {
         gl.viewport(0, 0, canvas.width, canvas.height);
 
         //Draw call - primitive assembly
-        gl.drawArrays(gl.TRIANGLES, 0, triVert.length / 5);
+        gl.drawArrays(gl.TRIANGLES, 0, triVert.length / 7);
 
         const err = gl.getError();
         if (err !== gl.NO_ERROR) console.log('WebGL error:', err);
@@ -605,19 +732,24 @@ window.addEventListener('resize', () => {
 });
 
 //Main Render Pipeline
-const cam = new Camera(0, 0, -1000, 1); //x, y, z, rate
-let light = new LightSource(0, -500, 0, 'white', 500000);
+const cam = new Camera(0, 1000, -1000, 1); //x, y, z, rate
+
+const lights = [
+    new PointLightSource(0, 1000, -1000, 1000000, 1, 1, 1),
+    new PointLightSource(1000, 1000, 1000, 1000000, 0, 1, 0),
+    new PointLightSource(-1000, 1000, 1000, 1000000, 0, 0, 1)
+];
 
 const main = () => {
     //update light source position for testing
-    light.x = cam.x;
-    light.y = cam.y;
-    light.z = cam.z;
+    lights[0].x = cam.x;
+    lights[0].y = cam.y;
+    lights[0].z = cam.z;
 
     //upate player logic, then render
 
     if (socket.readyState === WebSocket.OPEN) {  // only send if connected
-        const data = {x: cam.x, y: cam.y, z: cam.z, w: 1, r:cam.q};
+        const data = {x: cam.x, y: cam.y, z: cam.z, w: 1, rotation: {w: cam.q.w, x: -cam.q.x, y: -cam.q.y, z: -cam.q.z}, r: 1, g: 0, b: 0 };
         socket.send(JSON.stringify(data));
     }
 
@@ -641,53 +773,117 @@ const main = () => {
             const v2 = c.V[vert[1]];
             const v3 = c.V[vert[2]];
 
-            //brightness calculations
-            let tempTri = new Triangle(v1, v2, v3, 1, 1, 1);
-
-            const dist1 = (light.x-v1.x)**2 + (light.y-v1.y)**2 + (light.z-v1.z)**2;
-            const dist2 = (light.x-v2.x)**2 + (light.y-v2.y)**2 + (light.z-v2.z)**2;
-            const dist3 = (light.x-v3.x)**2 + (light.y-v3.y)**2 + (light.z-v3.z)**2;
-
-            const b1 = Math.min(Math.max(vectorDotProduct(light.calcVectorToPoint(v1), tempTri.vecN) / dist1 * light.intensity, 0.01), 0.9);
-            const b2 = Math.min(Math.max(vectorDotProduct(light.calcVectorToPoint(v2), tempTri.vecN) / dist2 * light.intensity, 0.01), 0.9);
-            const b3 = Math.min(Math.max(vectorDotProduct(light.calcVectorToPoint(v3), tempTri.vecN) / dist3 * light.intensity, 0.01), 0.9);
+            const h = handleTriangle(v1, v2, v3, c.r, c.g, c.b, lights);
+            if (!h) continue;
 
             //vertex projection
             let pv1 = multiplyMatVec(camProj, v1);
             let pv2 = multiplyMatVec(camProj, v2);
             let pv3 = multiplyMatVec(camProj, v3);
 
-            if (pv1.w <= 0 || pv2.w <= 0 || pv3.w <= 0){ continue; }
-
-            triangleBuffer.push(new Triangle(pv1, pv2, pv3, b1, b2, b3));
+            const clipped = clipTriangle(pv1, pv2, pv3, h.cr1, h.cg1, h.cb1, h.cr2, h.cg2, h.cb2, h.cr3, h.cg3, h.cb3);
+            for (const tri of clipped) triangleBuffer.push(tri);
         }
     }
 
-    //other player handling
+    //multiplayer handling
     for (const [id, player] of players) { //iterate through map of players
             player.updatePos();
+
+            const playerView = multiplyMatMat(translateM(player.x, player.y, player.z), player.rotation.convertToM());
+            const playerProj = multiplyMatMat(camProj, playerView);
+
             for (const vert of player.pos.M){ //iterate through vertex map of each player
                 //verticies
                 const v1 = player.pos.V[vert[0]];
                 const v2 = player.pos.V[vert[1]];
                 const v3 = player.pos.V[vert[2]];
 
-                //vertex projection
-                let pv1 = multiplyMatVec(camProj, v1);
-                let pv2 = multiplyMatVec(camProj, v2);
-                let pv3 = multiplyMatVec(camProj, v3);
+                //translate vertices without projection (raw world space coords)
+                const wv1 = multiplyMatVec(playerView, v1);
+                const wv2 = multiplyMatVec(playerView, v2);
+                const wv3 = multiplyMatVec(playerView, v3);
 
-                if (pv1.w <= 0 || pv2.w <= 0 || pv3.w <= 0){ continue; }
+                console.log("G " + player.g);
 
-                triangleBuffer.push(new Triangle(pv1, pv2, pv3));
+                const h = handleTriangle(wv1, wv2, wv3, player.r, player.g, player.b, lights);
+                if (!h) continue;
+
+                // clip space vertices for projection
+                const pv1 = multiplyMatVec(playerProj, v1);
+                const pv2 = multiplyMatVec(playerProj, v2);
+                const pv3 = multiplyMatVec(playerProj, v3);
+
+                const clipped = clipTriangle(pv1, pv2, pv3, h.cr1, h.cg1, h.cb1, h.cr2, h.cg2, h.cb2, h.cr3, h.cg3, h.cb3);
+                for (const tri of clipped) triangleBuffer.push(tri);
             }
         }
-
-
 
      render(triangleBuffer);
 
     requestAnimationFrame(main);
+}
+
+handleTriangle = (v1, v2, v3, cr, cg, cb, lights) => {
+
+    //backface culling
+    let tempTri = new Triangle(v1, v2, v3);
+
+    if (vectorDotProduct(cam.calcVectorToPoint(v1), tempTri.vecN) < 0){ return; }
+
+    //brightness calculations
+    let sr1 = [];
+    let sr2 = [];
+    let sr3 = [];
+
+    let sg1 = [];
+    let sg2 = [];
+    let sg3 = [];
+
+    let sb1 = [];
+    let sb2 = [];
+    let sb3 = [];
+
+    for (let light of lights){
+        const dist1 = (light.x-v1.x)**2 + (light.y-v1.y)**2 + (light.z-v1.z)**2;
+        const dist2 = (light.x-v2.x)**2 + (light.y-v2.y)**2 + (light.z-v2.z)**2;
+        const dist3 = (light.x-v3.x)**2 + (light.y-v3.y)**2 + (light.z-v3.z)**2;
+
+        const b1 = Math.min(Math.max(vectorDotProduct(light.calcVectorToPoint(v1), tempTri.vecN) / dist1 * light.intensity, 0), 1);
+        const b2 = Math.min(Math.max(vectorDotProduct(light.calcVectorToPoint(v2), tempTri.vecN) / dist2 * light.intensity, 0), 1);
+        const b3 = Math.min(Math.max(vectorDotProduct(light.calcVectorToPoint(v3), tempTri.vecN) / dist3 * light.intensity, 0), 1);
+
+        sr1.push(cr * light.r * b1);
+        sg1.push(cg * light.g * b1);
+        sb1.push(cb * light.b * b1);
+
+        sr2.push(cr * light.r * b2);
+        sg2.push(cg * light.g * b2);
+        sb2.push(cb * light.b * b2);
+
+        sr3.push(cr * light.r * b3);
+        sg3.push(cg * light.g * b3);
+        sb3.push(cb * light.b * b3);
+    }
+
+    const r1 = Math.min(sr1.reduce((a,b) => a+b, 0), 1);
+    const g1 = Math.min(sg1.reduce((a,b) => a+b, 0), 1);
+    const b1 = Math.min(sb1.reduce((a,b) => a+b, 0), 1);
+
+    const r2 = Math.min(sr2.reduce((a,b) => a+b, 0), 1);
+    const g2 = Math.min(sg2.reduce((a,b) => a+b, 0), 1);
+    const b2 = Math.min(sb2.reduce((a,b) => a+b, 0), 1);
+
+    const r3 = Math.min(sr3.reduce((a,b) => a+b, 0), 1);
+    const g3 = Math.min(sg3.reduce((a,b) => a+b, 0), 1);
+    const b3 = Math.min(sb3.reduce((a,b) => a+b, 0), 1);
+
+    return {
+        cr1: r1, cr2: r2, cr3: r3,
+        cg1: g1, cg2: g2, cg3: g3,
+        cb1: b1, cb2: b2, cb3: b3
+    }
+
 }
 
 webGlInit();

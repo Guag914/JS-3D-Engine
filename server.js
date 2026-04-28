@@ -23,7 +23,7 @@ const wss = new WebSocket.Server({ server });
 wss.on('connection', (socket) => {
     const id = Date.now();
     socketToId.set(socket, id);
-    clients.set(id, { x: 0, y: 0, z: 1000, w: 1, color: 'red' });
+    clients.set(id, { x: 0, y: 1000, z: -1000, w: 1, rotation: {w: 1, x: 0, y: 0, z: 0}, r: 1, g: 0, b: 0});
 
     socket.on('message', (data) => {
         const coords = JSON.parse(data);
