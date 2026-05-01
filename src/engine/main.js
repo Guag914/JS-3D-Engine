@@ -15,6 +15,17 @@ const pressedKeys = {};
 document.addEventListener('keydown', (event) => { pressedKeys[event.code] = true; });
 document.addEventListener('keyup', (event) => { pressedKeys[event.code] = false; });
 
+window.addEventListener('focus', () => {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+});
+
+window.addEventListener('resize', () => {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    gl.viewport(0, 0, canvas.width, canvas.height);
+});
+
 //class declarations:
 class Camera {
     constructor (x, y, z, r){
@@ -23,7 +34,6 @@ class Camera {
         this.z = z;
 
         this.r = r; //rate
-        this.acell = 0; //acceleration
 
         this.q = new Quaternion(1, 0, 0, 0); //identity quaternion
 
@@ -92,21 +102,82 @@ class Camera {
     }
 
     //Movement Methods
-    mForward(){ this.x -= this.forward.x * this.r * 10; this.y -= this.forward.y * this.r * 10; this.z += this.forward.z * this.r * 10; }
-    mBackward(){ this.x += this.forward.x * this.r * 10; this.y += this.forward.y * this.r * 10; this.z -= this.forward.z * this.r * 10; }
+    mForward(){
+        let dx = this.forward.x;
+        let dy = this.forward.y;
+        let dz = this.forward.z;
 
-    mLeft(){ this.x -= this.right.x * this.r * 10; this.y -= this.right.y * this.r * 10; this.z += this.right.z * this.r * 10; }
-    mRight(){ this.x += this.right.x * this.r * 10; this.y += this.right.y * this.r * 10; this.z -= this.right.z * this.r * 10; }
+        if (window.fpsMode) {
+            dy = 0;
+            let mag = Math.sqrt(dx * dx + dz * dz);
+            if (mag > 0) { dx /= mag; dz /= mag; }
+        }
 
-    //test using static +++ || --- not --+ && ++-
-    // mForward(){  this.x += this.forward.x * this.r * 10; this.y += this.forward.y * this.r * 10; this.z += this.forward.z * this.r * 10; }
-    // mBackward(){ this.x -= this.forward.x * this.r * 10; this.y -= this.forward.y * this.r * 10; this.z -= this.forward.z * this.r * 10; }
-    //
-    // mLeft(){  this.x -= this.right.x * this.r * 10; this.y -= this.right.y * this.r * 10; this.z -= this.right.z * this.r * 10; }
-    // mRight(){ this.x += this.right.x * this.r * 10; this.y += this.right.y * this.r * 10; this.z += this.right.z * this.r * 10; }
+        this.x -= dx * this.r * 10;
+        this.y -= dy * this.r * 10;
+        this.z += dz * this.r * 10;
+    }
+    mBackward(){
+        let dx = this.forward.x;
+        let dy = this.forward.y;
+        let dz = this.forward.z;
 
-    mUp(){ this.y += this.up.y * this.r * 10; }
-    mDown(){ this.y -= this.up.y * this.r * 10; }
+        if (window.fpsMode) {
+            dy = 0;
+            let mag = Math.sqrt(dx * dx + dz * dz);
+            if (mag > 0) { dx /= mag; dz /= mag; }
+            if (mag < 0) { dx /= -mag; dz /= -mag; }
+        }
+
+        this.x += dx * this.r * 10;
+        this.y += dy * this.r * 10;
+        this.z -= dz * this.r * 10;
+    }
+
+    mLeft(){
+        let dx = this.right.x;
+        let dy = this.right.y;
+        let dz = this.right.z;
+
+        if (window.fpsMode) {
+            dy = 0;
+            let mag = Math.sqrt(dx * dx + dz * dz);
+            if (mag > 0) { dx /= mag; dz /= mag; }
+            if (mag < 0) { dx /= -mag; dz /= -mag; }
+        }
+
+        this.x -= dx * this.r * 10;
+        this.y -= dy * this.r * 10;
+        this.z += dz * this.r * 10;
+    }
+    mRight(){
+        let dx = this.right.x;
+        let dy = this.right.y;
+        let dz = this.right.z;
+
+        if (window.fpsMode) {
+            dy = 0;
+            let mag = Math.sqrt(dx * dx + dz * dz);
+            if (mag > 0) { dx /= mag; dz /= mag; }
+            if (mag < 0) { dx /= -mag; dz /= -mag; }
+        }
+
+        this.x += dx * this.r * 10;
+        this.y += dy * this.r * 10;
+        this.z -= dz * this.r * 10;
+    }
+
+    mUp() {
+        let dy = 1;
+        if (!window.fpsMode) { dy = this.up.y; }
+        this.y += dy * this.r * 10;
+    }
+
+    mDown() {
+        let dy = 1;
+        if (!window.fpsMode) { dy = this.up.y; }
+        this.y -= dy * this.r * 10;
+    }
 
     //Rotation Methods
     rUp(){ if (this.pitch < 1.5){this.q.update(0.015 * this.r, Math.cos(this.yaw), 0, Math.sin(this.yaw)); this.pitch += 0.015 * this.r;} }
@@ -241,9 +312,12 @@ class SpotLightSource {
         vecD.y /= mag;
         vecD.z /= mag;
 
-        if (vectorDotProduct(ref1, vecD) > Math.cos(this.degreesToRadians(this.angle))){ b1 = Math.min(Math.max(vectorDotProduct(ref1, v1.vecN) / dist1 * this.intensity, 0.0), 1); }
-        if (vectorDotProduct(ref2, vecD) > Math.cos(this.degreesToRadians(this.angle))){ b2 = Math.min(Math.max(vectorDotProduct(ref2, v2.vecN) / dist2 * this.intensity, 0.0), 1); }
-        if (vectorDotProduct(ref3, vecD) > Math.cos(this.degreesToRadians(this.angle))){ b3 = Math.min(Math.max(vectorDotProduct(ref3, v3.vecN) / dist3 * this.intensity, 0.0), 1); }
+        const sideModifier = vecD.y < 0 ? -1 : 1;
+        const adjustedIntensity = this.intensity * sideModifier;
+
+        if (vectorDotProduct(ref1, vecD) > Math.cos(this.degreesToRadians(this.angle))){ b1 = Math.min(Math.max(vectorDotProduct(ref1, v1.vecN) / dist1 * adjustedIntensity, 0.01), 1); }
+        if (vectorDotProduct(ref2, vecD) > Math.cos(this.degreesToRadians(this.angle))){ b2 = Math.min(Math.max(vectorDotProduct(ref2, v2.vecN) / dist2 * adjustedIntensity, 0.01), 1); }
+        if (vectorDotProduct(ref3, vecD) > Math.cos(this.degreesToRadians(this.angle))){ b3 = Math.min(Math.max(vectorDotProduct(ref3, v3.vecN) / dist3 * adjustedIntensity, 0.01), 1); }
 
         return {c1: b1, c2: b2, c3: b3}
     }
@@ -276,11 +350,9 @@ class DirectionalLightSource {
             z: this.z
         }
 
-        // console.log('vec:', vec, 'v1.vecN:', v1.vecN, 'dot:', vectorDotProduct(vec, v1.vecN));
-
-        const b1 = Math.min(Math.max(vectorDotProduct(vec, v1.vecN) * this.intensity, 0.0), 1);
-        const b2 = Math.min(Math.max(vectorDotProduct(vec, v2.vecN) * this.intensity, 0.0), 1);
-        const b3 = Math.min(Math.max(vectorDotProduct(vec, v3.vecN) * this.intensity, 0.0), 1);
+        const b1 = Math.min(Math.max(vectorDotProduct(vec, v1.vecN) * this.intensity, 0.01), 1);
+        const b2 = Math.min(Math.max(vectorDotProduct(vec, v2.vecN) * this.intensity, 0.01), 1);
+        const b3 = Math.min(Math.max(vectorDotProduct(vec, v3.vecN) * this.intensity, 0.01), 1);
 
         return {c1: b1, c2: b2, c3: b3} //return in same format in order to keep pipeline the same
     }
@@ -302,9 +374,9 @@ class PointLightSource {
 
     calcVectorToPoint(v){
         let vec = {
-            x: this.x - v.x,
-            y: this.y - v.y,
-            z: this.z - v.z
+            x: v.x - this.x,
+            y: v.y - this.y,
+            z: v.z - this.z
         };
 
         const mag = Math.sqrt(vec.x**2 + vec.y**2 + vec.z**2);
@@ -320,9 +392,9 @@ class PointLightSource {
         const dist2 = (this.x-v2.x)**2 + (this.y-v2.y)**2 + (this.z-v2.z)**2;
         const dist3 = (this.x-v3.x)**2 + (this.y-v3.y)**2 + (this.z-v3.z)**2;
 
-        const b1 = Math.min(Math.max(vectorDotProduct(this.calcVectorToPoint(v1), v1.vecN) / dist1 * this.intensity, 0.05), 1);
-        const b2 = Math.min(Math.max(vectorDotProduct(this.calcVectorToPoint(v2), v2.vecN) / dist2 * this.intensity, 0.05), 1);
-        const b3 = Math.min(Math.max(vectorDotProduct(this.calcVectorToPoint(v3), v3.vecN) / dist3 * this.intensity, 0.05), 1);
+        const b1 = Math.min(Math.max(vectorDotProduct(this.calcVectorToPoint(v1), v1.vecN) / dist1 * this.intensity, 0.01), 1);
+        const b2 = Math.min(Math.max(vectorDotProduct(this.calcVectorToPoint(v2), v2.vecN) / dist2 * this.intensity, 0.01), 1);
+        const b3 = Math.min(Math.max(vectorDotProduct(this.calcVectorToPoint(v3), v3.vecN) / dist3 * this.intensity, 0.01), 1);
 
         return {c1: b1, c2: b2, c3: b3}
     }
@@ -347,24 +419,7 @@ class Player {
         this.pos = new Mesh(createSphere(0, 0, 0, 50, 8, 8), this.r, this.g, this.b);
     }
 
-    updatePos(){
-        this.pos.x = this.x;
-        this.pos.y = this.y;
-        this.pos.z = this.z;
-        this.pos.w = this.w;
-
-        this.pos.V = [
-            new Vertex( this.pos.width,  this.pos.height, -this.pos.depth, 1),
-            new Vertex( this.pos.width, -this.pos.height, -this.pos.depth, 1),
-            new Vertex(-this.pos.width, -this.pos.height, -this.pos.depth, 1),
-            new Vertex(-this.pos.width,  this.pos.height, -this.pos.depth, 1),
-            new Vertex( this.pos.width,  this.pos.height,  this.pos.depth, 1),
-            new Vertex( this.pos.width, -this.pos.height,  this.pos.depth, 1),
-            new Vertex(-this.pos.width, -this.pos.height,  this.pos.depth, 1),
-            new Vertex(-this.pos.width,  this.pos.height,  this.pos.depth, 1),
-        ];
-    }
-
+    //position handled by playerview matrix in render loop
     //handle rendering within the main loop
 }
 
@@ -475,62 +530,7 @@ class Quaternion{
         ];
     }
 
-    //test with +++ || --- coordinates not ++- && --+
-    // convertToM(){
-    //     return [
-    //         [-(1 - 2*(this.y**2+this.z**2)), -(2*(this.x*this.y+this.w*this.z)),  -(2*(this.x*this.z-this.w*this.y)), 0],
-    //         [2*(this.x*this.y-this.w*this.z),  1 - 2*(this.x**2+this.z**2), 2*(this.y*this.z+this.w*this.x), 0],
-    //         [2*(this.x*this.z+this.w*this.y),  2*(this.y*this.z-this.w*this.x), 1 - 2*(this.x**2+this.y**2), 0],
-    //         [0, 0, 0, 1]
-    //     ];
-    // }
-
-    quaternionDotProduct(q1, q2) { return q1.x * q2.x + q1.y * q2.y + q1.z * q2.z + q1.w * q2.w; }
-}
-
-class Cube {
-    constructor(x, y, z, w, width, height, depth, r, g, b) {
-        this.x = x;
-        this.y = y;
-        this.z = z;
-        this.w = w;
-
-        this.r = r;
-        this.g = g;
-        this.b = b;
-
-        this.width = width / 2;
-        this.height = height / 2;
-        this.depth = depth / 2;
-
-        this.M = [
-            // Front face
-            [0,1,2], [0,2,3],
-            // Back face
-            [4,6,5], [4,7,6],
-            // Top face
-            [0,3,7], [0,7,4],
-            // Bottom face
-            [1,5,6], [1,6,2],
-            // Right face
-            [0,4,5], [0,5,1],
-            // Left face
-            [3,2,6], [3,6,7],
-        ];
-
-        this.V = [
-            // Front face (z - depth)
-            new Vertex(x + this.width, y + this.height, z - this.depth, w), // 0: top-right-front
-            new Vertex(x + this.width, y - this.height, z - this.depth, w), // 1: bot-right-front
-            new Vertex(x - this.width, y - this.height, z - this.depth, w), // 2: bot-left-front
-            new Vertex(x - this.width, y + this.height, z - this.depth, w), // 3: top-left-front
-            // Back face (z + depth)
-            new Vertex(x + this.width, y + this.height, z + this.depth, w), // 4: top-right-back
-            new Vertex(x + this.width, y - this.height, z + this.depth, w), // 5: bot-right-back
-            new Vertex(x - this.width, y - this.height, z + this.depth, w), // 6: bot-left-back
-            new Vertex(x - this.width, y + this.height, z + this.depth, w), // 7: top-left-back
-        ];
-    }
+    quaternionDotProduct(q1, q2) { return q1.x * q2.x + q1.y * q2.y + q1.z * q2.z + q1.w * q2.w; } //use for individual rotation
 }
 
 class Mesh {
@@ -563,7 +563,7 @@ class Triangle {
         this.b3 = b3;
 
         //face normal
-        this.vecN = calculateFaceNormal(this.v1, this.v2, this.v3);;
+        this.vecN = calculateFaceNormal(this.v1, this.v2, this.v3);
 
         //vector normalization
         const mag = Math.sqrt(this.vecN.x**2 + this.vecN.y**2 + this.vecN.z**2);
@@ -882,16 +882,13 @@ const extrudeSilhouettes = (silhouettes, light) => {
             w: 1
         };
 
-        // Try this specific winding
-        // Triangle 1: v1 -> v2 -> v1_far
-        volumeTriangles.push(new Triangle(v1, v2, v1_far));
-
-// Triangle 2: v2 -> v2_far -> v1_far
+        volumeTriangles.push(new Triangle(v2, v1_far, v1));
         volumeTriangles.push(new Triangle(v2, v2_far, v1_far));
     });
 
     return volumeTriangles;
 }
+
 
 //init compiling
 
@@ -988,9 +985,15 @@ const webGlInit = () => {
     gl.enable(gl.STENCIL_TEST);
 }
 
-//webgl rendering
-const render = (triBuffer, shadowBuffer) => {
+// webgl rendering
+const render = (triBuffer, shadowBuffer, camProj) => {
+
+    //prevent glitched pipeline
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    if (canvas.width === 0 || canvas.height === 0) return;
+
     try {
+        const mode = wireToggle.checked ? gl.LINES : gl.TRIANGLES;
 
         if (!canvas){ console.log('Cannot get canvas element'); return; }
         if (!gl){ console.log('Browser does not support webgl2'); return; }
@@ -1014,9 +1017,13 @@ const render = (triBuffer, shadowBuffer) => {
         const cpuTriBuffer = new Float32Array(triVert); //gpu uses 32 bit to store format
         gl.bindBuffer(gl.ARRAY_BUFFER, gpuTriBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, cpuTriBuffer, gl.DYNAMIC_DRAW);
+        rebindAttribs();
 
         //Draw call - primitive assembly
-        gl.drawArrays(gl.TRIANGLES, 0, triVert.length / 7);
+        const vertexCount = triVert.length / 7;
+        if (vertexCount > 0) {
+            gl.drawArrays(mode, 0, vertexCount);
+        }
 
         //step 3  calculate volume shadow
         gl.colorMask(false, false, false, false);
@@ -1026,33 +1033,41 @@ const render = (triBuffer, shadowBuffer) => {
         gl.clear(gl.STENCIL_BUFFER_BIT);
 
         let shadowTriBuffer = [];
-
         for (let tri of shadowBuffer){
-            shadowTriBuffer.push(tri.v1.x, tri.v1.y, tri.v1.z, 1, 0, 0, 0);
-            shadowTriBuffer.push(tri.v2.x, tri.v2.y, tri.v2.z, 1, 0, 0, 0);
-            shadowTriBuffer.push(tri.v3.x, tri.v3.y, tri.v3.z, 1, 0, 0, 0);
+            const pv1 = multiplyMatVec(camProj, tri.v1);
+            const pv2 = multiplyMatVec(camProj, tri.v2);
+            const pv3 = multiplyMatVec(camProj, tri.v3);
+
+            shadowTriBuffer.push(pv1.x, pv1.y, pv1.z, pv1.w, 0, 0, 0);
+            shadowTriBuffer.push(pv2.x, pv2.y, pv2.z, pv2.w, 0, 0, 0);
+            shadowTriBuffer.push(pv3.x, pv3.y, pv3.z, pv3.w, 0, 0, 0);
         }
 
         const cpuShadowBuffer = new Float32Array(shadowTriBuffer);
         gl.bindBuffer(gl.ARRAY_BUFFER, gpuShadowBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, cpuShadowBuffer, gl.DYNAMIC_DRAW);
+        rebindAttribs();
 
-        gl.enable(gl.CULL_FACE);
-        gl.frontFace(gl.CW); // You mentioned you set this
+        //setting cull direction and face
+        gl.frontFace(gl.CW);
+        // gl.depthFunc(gl.LEQUAL);
 
-        // PASS 1: BACK FACES
-        gl.cullFace(gl.FRONT); // This draws the back faces
-        gl.stencilOp(gl.KEEP, gl.INCR_WRAP, gl.KEEP); // Increment on Z-Fail
-        gl.drawArrays(gl.TRIANGLES, 0, cpuShadowBuffer.length / 7);
+        const shadowVertexCount = shadowTriBuffer.length / 7;
+        if (shadowVertexCount > 0) {
+            //back faces (increment)
+            gl.stencilOp(gl.KEEP, gl.INCR_WRAP, gl.KEEP);
+            gl.drawArrays(mode, 0, shadowVertexCount);
 
-        // PASS 2: FRONT FACES
-        gl.cullFace(gl.BACK); // This draws the front faces
-        gl.stencilOp(gl.KEEP, gl.DECR_WRAP, gl.KEEP); // Decrement on Z-Fail
-        gl.drawArrays(gl.TRIANGLES, 0, cpuShadowBuffer.length / 7);
+            //front faces (decrement)
+            gl.stencilOp(gl.KEEP, gl.DECR_WRAP, gl.KEEP);
+            gl.drawArrays(mode, 0, shadowVertexCount);
+        }
 
         //step 5 draw shadow rectangle
         gl.colorMask(true, true, true, true);
-        gl.stencilFunc(gl.ALWAYS, 0, 0xFF);
+        gl.depthMask(true);
+        gl.depthFunc(gl.LESS);
+        gl.stencilFunc(gl.NOTEQUAL, 0, 0xFF);
         gl.stencilOp(gl.KEEP, gl.KEEP, gl.KEEP);
 
         gl.enable(gl.BLEND);
@@ -1067,11 +1082,14 @@ const render = (triBuffer, shadowBuffer) => {
         ]);
         gl.bindBuffer(gl.ARRAY_BUFFER, gpuQuadBuffer);
         gl.bufferData(gl.ARRAY_BUFFER, quadData, gl.STATIC_DRAW);
-        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        rebindAttribs();
+
+        gl.drawArrays(wireToggle.checked ? gl.LINES : gl.TRIANGLE_STRIP, 0, 4);
 
         //Rasterizer - which pixels are part of a triangle
         gl.viewport(0, 0, canvas.width, canvas.height);
 
+        //reset
         gl.disable(gl.STENCIL_TEST);
         gl.disable(gl.BLEND);
         gl.depthMask(true);
@@ -1083,11 +1101,10 @@ const render = (triBuffer, shadowBuffer) => {
     } catch (e){console.log(e);}
 }
 
-window.addEventListener('resize', () => {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-    gl.viewport(0, 0, canvas.width, canvas.height);
-});
+const rebindAttribs = () => {
+    gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 7 * Float32Array.BYTES_PER_ELEMENT, 0);
+    gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 7 * Float32Array.BYTES_PER_ELEMENT, 4 * Float32Array.BYTES_PER_ELEMENT);
+};
 
 //Meant for testing only
 const createRandomPlane = (cx, cy, cz, width, depth, segments) => {
@@ -1119,8 +1136,8 @@ const createRandomPlane = (cx, cy, cz, width, depth, segments) => {
             const v3 = vertices[c];
             const v4 = vertices[d];
 
-            triangles.push(new Triangle(v1, v2, v3, 1, 1, 1, 1, 1, 1, 1, 1, 1));
-            triangles.push(new Triangle(v2, v4, v3, 1, 1, 1, 1, 1, 1, 1, 1, 1));
+            triangles.push(new Triangle(v1, v3, v2, 1, 1, 1, 1, 1, 1, 1, 1, 1));
+            triangles.push(new Triangle(v2, v3, v4, 1, 1, 1, 1, 1, 1, 1, 1, 1));
         }
     }
 
@@ -1164,32 +1181,70 @@ const createSphere = (cx, cy, cz, radius, stacks, slices) => {
             const v3 = vertices[a + 1];
             const v4 = vertices[b + 1];
 
-            triangles.push(new Triangle(v1, v2, v3, 1, 1, 1, 1, 1, 1, 1, 1, 1));
-            triangles.push(new Triangle(v2, v4, v3, 1, 1, 1, 1, 1, 1, 1, 1, 1));
+            triangles.push(new Triangle(v1, v3, v2, 1, 1, 1, 1, 1, 1, 1, 1, 1));
+            triangles.push(new Triangle(v2, v3, v4, 1, 1, 1, 1, 1, 1, 1, 1, 1));
         }
     }
 
     return triangles;
 }
 
+const loadOBJ = (objString, r, g, b) => {
+    const positions = [];
+    const triangles = [];
+
+    const lines = objString.split('\n');
+
+    for (let line of lines) {
+        const parts = line.trim().split(/\s+/); //split by white space
+        const type = parts[0]; // "f" or "v"
+
+        if (type === 'v') {
+            //vertex position: v x y z
+            positions.push({
+                x: parseFloat(parts[1]),
+                y: parseFloat(parts[3]),
+                z: parseFloat(parts[2])
+            });
+        } else if (type === 'f') {
+            //f v1/vt1/vn1 v2/vt2/vn2 v3/vt3/vn3
+            const f1 = parseInt(parts[1].split('/')[0]) - 1;
+            const f2 = parseInt(parts[2].split('/')[0]) - 1;
+            const f3 = parseInt(parts[3].split('/')[0]) - 1;
+
+            //connect indices to positions array
+            const v1 = new Vertex(positions[f1].x, positions[f1].y, positions[f1].z, 1);
+            const v2 = new Vertex(positions[f2].x, positions[f2].y, positions[f2].z, 1);
+            const v3 = new Vertex(positions[f3].x, positions[f3].y, positions[f3].z, 1);
+
+            //push triangle
+            triangles.push(new Triangle(v1, v2, v3, r, g, b, r, g, b, r, g, b));
+        }
+    }
+
+    normalizeMesh(triangles, 500); //adjust to liking
+    return triangles;
+};
+
 //Main Render Pipeline
-const mesh = new Mesh(createRandomPlane(0, 0, 0, 1000, 1000, 30), 1, 1, 0.8, false)
+const mesh = new Mesh(createRandomPlane(0, 0, 0, 1000, 1000, 30), 1, 1, 0.8, false);
 const cam = new Camera(0, 1000, -1000, 1); //x, y, z, rate
-const lights = [
-    //average ranges calculate from 1000px away from mesh
-    new PointLightSource(0, 1000, 0, 640000, 1, 1, 1), //avg range 60000-2500000 | mid 1280000
-    new SpotLightSource(0, 1000, 0, 0, -1, 0, -1000000, 1, 0, 0, 10), //avg range 80000-1000000 | mid 540000
-    new DirectionalLightSource(0, 1000, 0, 0.5, 1, 1, 0.8), //avg range 0-2 | mid 1
-];
+
+window.pointLights = [ new PointLightSource(0, 1000, 0, 64000, 1, 1, 1), /*avg range 60000-2500000 | mid 1280000*/ ];
+window.spotLights = [ new SpotLightSource(0, 1000, 0, 0, -1, 0, 500000, 1, 1, 1, 10) /*avg range 80000-1000000 | mid 540000*/ ];
+window.dirLights = [ new DirectionalLightSource(0.5, 1, 0.5, 0.5, 1, 1, 0.8) /*avg range 0-2 | mid 1*/];
+
+let lights = [];
 
 const main = () => {
-    //update light source position for testing
+    lights = [new PointLightSource(0, 1000, 0, 64000, 1, 1, 1), ...window.pointLights, ...window.spotLights, ...window.dirLights];
+
+    //dynamic lighting
     lights[0].x = cam.x;
     lights[0].y = cam.y;
     lights[0].z = cam.z;
 
     //upate player logic, then render
-
     if (socket.readyState === WebSocket.OPEN) {  // only send if connected
         const data = {x: cam.x, y: cam.y, z: cam.z, w: 1, rotation: {w: cam.q.w, x: -cam.q.x, y: -cam.q.y, z: -cam.q.z}, r: 1, g: 0, b: 0 };
         socket.send(JSON.stringify(data));
@@ -1207,15 +1262,19 @@ const main = () => {
 
     //shadow logic
     let shadowBuffer = [];
-    for (let light of lights) {
-        let sils = getSilhouettes(light);
-        let vol = extrudeSilhouettes(sils, light);
-        for (let tri of vol) {
-            shadowBuffer.push(new Triangle(
-                multiplyMatVec(camProj, tri.v1),
-                multiplyMatVec(camProj, tri.v2),
-                multiplyMatVec(camProj, tri.v3)
-            ));
+    if (window.advancedShadows) {
+        for (let light of lights) {
+            let sils = getSilhouettes(light);
+            let vol = extrudeSilhouettes(sils, light);
+            for (let tri of vol) {
+                // shadowBuffer.push(new Triangle(
+                //     multiplyMatVec(camProj, tri.v1),
+                //     multiplyMatVec(camProj, tri.v2),
+                //     multiplyMatVec(camProj, tri.v3)
+                // ));
+
+                shadowBuffer.push(tri);
+            }
         }
     }
 
@@ -1241,7 +1300,6 @@ const main = () => {
 
     //multiplayer handling
     for (const [id, player] of players) { //iterate through map of players
-            player.updatePos();
 
             const playerView = multiplyMatMat(translateM(player.x, player.y, player.z), player.rotation.convertToM());
             const playerProj = multiplyMatMat(camProj, playerView);
@@ -1278,7 +1336,7 @@ const main = () => {
             }
         }
 
-    render(triangleBuffer, shadowBuffer);
+    render(triangleBuffer, shadowBuffer, camProj);
     requestAnimationFrame(main);
 }
 
@@ -1343,4 +1401,35 @@ handleTriangle = (v1, v2, v3, cr, cg, cb, lights, doubleSided) => {
 buildAdjacencyMap();
 buildEdgeMap(mesh);
 webGlInit();
+
+const normalizeMesh = (triangles, targetSize) => {
+    // find bounding box
+    let minX = Infinity, minY = Infinity, minZ = Infinity;
+    let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+
+    for (let tri of triangles){
+        for (let v of [tri.v1, tri.v2, tri.v3]){
+            minX = Math.min(minX, v.x); maxX = Math.max(maxX, v.x);
+            minY = Math.min(minY, v.y); maxY = Math.max(maxY, v.y);
+            minZ = Math.min(minZ, v.z); maxZ = Math.max(maxZ, v.z);
+        }
+    }
+
+    // center and scale
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+    const cz = (minZ + maxZ) / 2;
+    const maxDim = Math.max(maxX - minX, maxY - minY, maxZ - minZ);
+    const scale = targetSize / maxDim;
+
+    for (let tri of triangles){
+        for (let v of [tri.v1, tri.v2, tri.v3]){
+            v.x = (v.x - cx) * scale;
+            v.y = (v.y - cy) * scale;
+            v.z = (v.z - cz) * scale;
+        }
+    }
+}
+
 main();
+syncLightUI();

@@ -10,14 +10,15 @@
     "server": "node server.js",
     "refresh": " npm install --package-lock-only"
   },
-  "keywords": ["3d", "engine", "js"],
+  "keywords": [
+    "3d",
+    "engine",
+    "js"
+  ],
   "author": "Akshay Gillett",
   "license": "UNLICENSED",
   "dependencies": {
     "gl-matrix": "^3.4.4",
     "ws": "^8.19.0"
-  },
-  "devDependencies": {
-    "vite": "^6.4.1"
   }
 }
